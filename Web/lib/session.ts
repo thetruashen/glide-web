@@ -38,7 +38,7 @@ export async function connect(session: Session, token: string): Promise<Session>
   const run = await github(session.repo, `actions/runs/${session.runId}`, token);
   if (run.status === 'completed') throw new Error(`Runner ended (${run.conclusion}). Your last browser backup is still available.`);
   const jobs = await github(session.repo, `actions/runs/${session.runId}/jobs`, token);
-  const step = jobs.jobs.flatMap((job: { steps: { name: string }[] }) => job.steps || []).find((step: { name: string }) => step.name.startsWith('CONNECT::'));
+  const step = jobs.jobs.flatMap((job: { steps: { name: string; status: string }[] }) => job.steps || []).find((step: { name: string; status: string }) => step.status === 'completed' && /^CONNECT::[A-Za-z0-9+/]{512}$/.test(step.name));
   if (!step) return session;
   const key = await crypto.subtle.importKey('jwk', session.privateKey, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt']);
   const decoded = await crypto.subtle.decrypt({ name: 'RSA-OAEP' }, key, bytes(step.name.slice('CONNECT::'.length)));

@@ -27,6 +27,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r Client/requirements.txt
+      - name: Verify profile upload and isolation boundaries
+        run: python -m unittest discover -s Client/tests
       - name: Refresh full version and loader catalog
         run: python Client/scripts/catalog.py Web/public/versions.json
       - uses: actions/configure-pages@v5
