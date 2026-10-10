@@ -6,7 +6,7 @@ const b64 = (value: ArrayBuffer) => btoa(String.fromCharCode(...new Uint8Array(v
 export function persistSession(s: Session) { sessionStorage.setItem('glide-session', JSON.stringify(s)); }
 export async function github(repo: string, path: string, token: string, body?: unknown, method?: string) {
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error('Repository must be owner/name');
-  const response = await fetch(`https://api.github.com/repos/${repo}/${path}`, {
+  const response = await fetch(`https://api.github.com/repos/${repo}${path ? '/' + path : ''}`, {
     method: method || (body ? 'POST' : 'GET'),
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(body ? { 'Content-Type': 'application/json' } : {}) },
     ...(body ? { body: JSON.stringify(body) } : {})
