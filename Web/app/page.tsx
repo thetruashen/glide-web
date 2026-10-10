@@ -108,6 +108,17 @@ export default function Home() {
     return () => window.removeEventListener('beforeunload', warn);
   }, [session]);
 
+  useEffect(() => {
+    const release = () => {
+      if (!document.fullscreenElement) {
+        const keyboard = (navigator as Navigator & { keyboard?: { unlock(): void } }).keyboard;
+        keyboard?.unlock();
+      }
+    };
+    document.addEventListener('fullscreenchange', release);
+    return () => document.removeEventListener('fullscreenchange', release);
+  }, []);
+
   async function change(values: Partial<Profile>) {
     if (!profile || session) return;
     const next = { ...profile, ...values }; setProfile(next);
@@ -173,7 +184,13 @@ export default function Home() {
     catch (e) { setError(String(e)); }
   }
   async function fullscreen() {
-    try { await screen.current?.requestFullscreen({ navigationUI: 'hide' }); }
+    try {
+      await screen.current?.requestFullscreen({ navigationUI: 'hide' });
+      const keyboard = (navigator as Navigator & { keyboard?: { lock(keys: string[]): Promise<void> } }).keyboard;
+      if (keyboard?.lock) {
+        try { await keyboard.lock(['Escape']); } catch { /* Fullscreen remains usable when keyboard permission is declined. */ }
+      }
+    }
     catch { setError('Fullscreen was unavailable. Use the stream’s fullscreen control or open it in a new tab.'); }
   }
   const compatible = versions.find(v => v.id === profile?.version)?.loaders || ['vanilla','fabric','forge','quilt','neoforge'];
