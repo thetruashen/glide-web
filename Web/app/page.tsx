@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { download, getBackup, getMods, importProfile, newProfile, packProfile, profiles, removeProfile, saveMods, saveProfile, storeBackup, type Mod, type Profile } from '../lib/storage';
-import { connect, github, launch, persistSession, runner, streamURL, type Session, type Status } from '../lib/session';
+import { connect, github, launch, persistSession, runner, streamURL, uploadProfile, type Session, type Status } from '../lib/session';
 
 type Version = { id: string; type: string; loaders: string[] };
 const DEFAULT_REPO = process.env.NEXT_PUBLIC_GLIDE_REPO || 'thetruashen/glide-web';
@@ -28,6 +28,7 @@ export default function Home() {
   const polling = useRef(false);
   const initialized = useRef(false);
   const snapshotTime = useRef(0);
+  const stopping = useRef(false);
   const elapsed = session ? Math.round((Date.now() - session.created) / 1000) : 0;
 
   useEffect(() => {
@@ -64,7 +65,7 @@ export default function Home() {
     if (!session || !token) return;
     let stopped = false;
     const poll = async () => {
-      if (polling.current || stopped) return;
+      if (polling.current || stopped || stopping.current) return;
       polling.current = true;
       try {
         let s = session;
@@ -79,7 +80,7 @@ export default function Home() {
         setStatus(current);
         if (!current.started) {
           setMessage('Sending your local profile directly to the runner…');
-          await runner(s, 'profile', await packProfile(s.profileId));
+          await uploadProfile(s, await packProfile(s.profileId));
           await runner(s, 'start', '{}');
           s = { ...s, uploaded: true }; persistSession(s); setSession(s);
         } else if (current.finished) {
@@ -119,7 +120,7 @@ export default function Home() {
     setError(''); setBusy(true);
     try {
       if (!token.trim()) { setShowConnection(true); throw new Error('Enter a repository-scoped GitHub token with Actions read/write access. It stays in this tab.'); }
-      if (!/^[A-Za-z0-9_]{1,16}$/.test(profile.username)) throw new Error('Use a username with 1–16 letters, digits or underscores.');
+      if (!/^[A-Za-z0-9_]{3,16}$/.test(profile.username)) throw new Error('Use a username with 3–16 letters, digits or underscores.');
       if (profile.auth === 'microsoft' && !profile.clientId) throw new Error('Enter your Microsoft public-client application ID in settings.');
       sessionStorage.setItem('glide-token', token.trim());
       await navigator.storage?.persist();
@@ -130,6 +131,7 @@ export default function Home() {
   }
   async function stop() {
     if (!session) return;
+    stopping.current = true;
     setBusy(true); setError('');
     try {
       if (session.url) {
@@ -150,7 +152,7 @@ export default function Home() {
       await github(s.repo, `actions/runs/${s.runId}/cancel`, token, {}, 'POST');
       sessionStorage.removeItem('glide-session'); setSession(undefined); setStatus(undefined);
       setMessage('Saved locally. The runner has been stopped.');
-    } catch (e) { setError(String(e)); } finally { setBusy(false); }
+    } catch (e) { setError(String(e)); } finally { setBusy(false); stopping.current = false; }
   }
   async function uploadMods(files: FileList | null) {
     if (!files || !profile) return;

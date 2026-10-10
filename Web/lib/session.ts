@@ -53,3 +53,10 @@ export async function runner(session: Session, path: string, body?: Blob | strin
   return response;
 }
 export function streamURL(session: Session) { return `${session.url}/glide-api/login?ticket=${encodeURIComponent(session.secret || '')}`; }
+export async function uploadProfile(session: Session, blob: Blob) {
+  if (blob.size > 512 * 1048576) throw new Error('Profile exceeds the 512 MB transfer limit.');
+  const id = crypto.randomUUID(), size = 8 * 1048576;
+  const count = Math.ceil(blob.size / size);
+  for (let i = 0; i < count; i++) await runner(session, `upload/${id}/${i}`, blob.slice(i * size, (i + 1) * size));
+  await runner(session, `import/${id}/${count}`, '{}');
+}

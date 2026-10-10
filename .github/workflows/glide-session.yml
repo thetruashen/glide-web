@@ -177,7 +177,10 @@ jobs:
           export GLIDE_RUNTIME_AGENT=""
           python Client/scripts/glide_launch.py >/tmp/glide-launch.log 2>&1 &
           GAME=$!
-          while kill -0 "$GAME" 2>/dev/null; do sleep 5; done
+          while kill -0 "$GAME" 2>/dev/null; do
+            if [ -f /tmp/glide-session/stop ]; then pkill -TERM -P "$GAME" || true; fi
+            sleep 5
+          done
           wait "$GAME" || true
           touch /tmp/glide-session/finished
           sleep 300

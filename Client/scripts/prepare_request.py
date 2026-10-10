@@ -18,8 +18,8 @@ major = metadata.json().get("javaVersion", {}).get("majorVersion", 8)
 loader = config.get("loader", "vanilla")
 if loader not in {"vanilla", "fabric", "quilt", "forge", "neoforge"}:
     raise ValueError("Invalid loader")
-if not re.fullmatch(r"[A-Za-z0-9_]{1,16}", config.get("username", "GlidePlayer")):
-    raise ValueError("Username must be 1–16 letters, numbers or underscores")
+if not re.fullmatch(r"[A-Za-z0-9_]{3,16}", config.get("username", "GlidePlayer")):
+    raise ValueError("Username must be 3–16 letters, numbers or underscores")
 origin = urlsplit(config.get("origin", ""))
 if origin.scheme not in {"https", "http"} or not origin.netloc or origin.path not in {"", "/"}:
     raise ValueError("Invalid website origin")

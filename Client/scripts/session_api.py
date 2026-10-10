@@ -133,7 +133,52 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(401, {"error": "Unauthorized"})
             return
         route = urlsplit(self.path).path
-        if route == "/glide-api/profile":
+        upload = re.fullmatch(r'/glide-api/upload/([a-f0-9-]{36})/(\d{1,2})', route)
+        finish = re.fullmatch(r'/glide-api/import/([a-f0-9-]{36})/(\d{1,2})', route)
+        if upload or finish:
+            if (RUNTIME / 'start').exists():
+                self.reply(409, {'error': 'Session already started'})
+                return
+            try:
+                match = upload or finish
+                folder = RUNTIME / ('upload-' + match[1])
+                index = int(match[2])
+                if index > 64:
+                    raise ValueError('Too many chunks')
+                if upload:
+                    length = int(self.headers.get('Content-Length', '0'))
+                    if not 0 < length <= 8 * 1024 * 1024:
+                        raise ValueError('Invalid chunk size')
+                    with LOCK:
+                        # One upload attempt at a time keeps temporary disk use bounded.
+                        import shutil
+                        for previous in RUNTIME.glob('upload-*'):
+                            if previous != folder:
+                                shutil.rmtree(previous)
+                        folder.mkdir(exist_ok=True)
+                        part = folder / str(index)
+                        data = self.rfile.read(length)
+                        if len(data) != length:
+                            raise ValueError('Incomplete chunk')
+                        part.write_bytes(data)
+                        if sum(p.stat().st_size for p in folder.iterdir()) > MAX_BYTES:
+                            shutil.rmtree(folder)
+                            raise ValueError('Profile exceeds 512 MiB')
+                    self.reply(200, {'chunk': index})
+                else:
+                    if not 1 <= index <= 64:
+                        raise ValueError('Invalid chunk count')
+                    with LOCK:
+                        data = b''.join((folder / str(i)).read_bytes() for i in range(index))
+                        if len(data) > MAX_BYTES:
+                            raise ValueError('Profile exceeds 512 MiB')
+                        extract_archive(data, ROOT)
+                        import shutil
+                        shutil.rmtree(folder)
+                    self.reply(200, {'uploaded': True})
+            except (ValueError, OSError, zipfile.BadZipFile):
+                self.reply(400, {'error': 'Invalid or incomplete profile upload'})
+        elif route == "/glide-api/profile":
             if (RUNTIME / "start").exists():
                 self.reply(409, {"error": "Session already started"})
                 return
