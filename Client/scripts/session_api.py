@@ -206,7 +206,7 @@ class Handler(BaseHTTPRequestHandler):
         elif route == "/glide-api/stop":
             text = Path("/tmp/glide-launch.log").read_text(errors="replace") if Path("/tmp/glide-launch.log").exists() else ""
             pids = re.findall(r"MINECRAFT_PID=(\d+)", text)
-            if pids:
+            if pids and not (RUNTIME / 'signaled').exists():
                 try:
                     os.kill(int(pids[-1]), signal.SIGTERM)
                     (RUNTIME / 'signaled').touch()
