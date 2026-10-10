@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { download, getBackup, getMods, importProfile, newProfile, packProfile, profiles, removeProfile, saveMods, saveProfile, storeBackup, type Mod, type Profile } from '../lib/storage';
-import { connect, github, launch, persistSession, runner, streamURL, uploadProfile, type Session, type Status } from '../lib/session';
+import { connect, github, launch, persistSession, runner, RunnerEnded, streamURL, uploadProfile, type Session, type Status } from '../lib/session';
 
 type Version = { id: string; type: string; loaders: string[] };
 const DEFAULT_REPO = process.env.NEXT_PUBLIC_GLIDE_REPO || 'thetruashen/glide-web';
@@ -93,7 +93,15 @@ export default function Home() {
           if (current.stage === 'minecraft-running' && Date.now() - snapshotTime.current > 60000) await checkpoint(s);
         }
         setError('');
-      } catch (e) { if (!stopped) setError(String(e)); }
+      } catch (e) {
+        if (!stopped) {
+          setError(String(e));
+          if (e instanceof RunnerEnded) {
+            sessionStorage.removeItem('glide-session'); setSession(undefined); setStatus(undefined);
+            setMessage('Runner ended. Your last browser backup is preserved.');
+          }
+        }
+      }
       finally { polling.current = false; }
     };
     void poll();
@@ -145,6 +153,14 @@ export default function Home() {
     stopping.current = true;
     setBusy(true); setError('');
     try {
+      if (session.runId) {
+        const run = await github(session.repo, `actions/runs/${session.runId}`, token);
+        if (run.status === 'completed') {
+          sessionStorage.removeItem('glide-session'); setSession(undefined); setStatus(undefined);
+          setMessage('Runner already ended. Your last browser backup is preserved.');
+          return;
+        }
+      }
       if (session.url) {
         await runner(session, 'stop', '{}');
         setMessage('Stopping Minecraft and waiting for its final save…');

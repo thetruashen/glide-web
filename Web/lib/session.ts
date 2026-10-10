@@ -1,5 +1,6 @@
 import type { Profile } from './storage';
 export type Session = { id: string; profileId: string; repo: string; privateKey: JsonWebKey; runId?: number; url?: string; secret?: string; created: number; uploaded?: boolean };
+export class RunnerEnded extends Error {}
 export type Status = { stage: string; started: boolean; finished: boolean; exitCode?: number; error?: string; MICROSOFT_LOGIN_URL?: string; MICROSOFT_LOGIN_CODE?: string; MINECRAFT_ACCOUNT_NAME?: string };
 const bytes = (value: string) => Uint8Array.from(atob(value), c => c.charCodeAt(0));
 const b64 = (value: ArrayBuffer) => btoa(String.fromCharCode(...new Uint8Array(value)));
@@ -36,7 +37,7 @@ export async function connect(session: Session, token: string): Promise<Session>
     session = { ...session, runId: run.id }; persistSession(session);
   }
   const run = await github(session.repo, `actions/runs/${session.runId}`, token);
-  if (run.status === 'completed') throw new Error(`Runner ended (${run.conclusion}). Your last browser backup is still available.`);
+  if (run.status === 'completed') throw new RunnerEnded(`Runner ended (${run.conclusion}). Your last browser backup is still available.`);
   const jobs = await github(session.repo, `actions/runs/${session.runId}/jobs`, token);
   const step = jobs.jobs.flatMap((job: { steps: { name: string; status: string }[] }) => job.steps || []).find((step: { name: string; status: string }) => step.status === 'completed' && /^CONNECT::[A-Za-z0-9+/]{512}$/.test(step.name));
   if (!step) return session;

@@ -180,7 +180,9 @@ jobs:
           python Client/scripts/glide_launch.py >/tmp/glide-launch.log 2>&1 &
           GAME=$!
           while kill -0 "$GAME" 2>/dev/null; do
-            if [ -f /tmp/glide-session/stop ]; then pkill -TERM -P "$GAME" || true; fi
+            if [ -f /tmp/glide-session/stop ] && [ ! -f /tmp/glide-session/signaled ]; then
+              pkill -TERM -P "$GAME" && touch /tmp/glide-session/signaled || true
+            fi
             sleep 5
           done
           wait "$GAME" || true

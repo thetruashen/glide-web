@@ -100,7 +100,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             return
-        if not self.authorized():
+        if (route.path != '/glide-api/check' and not self.headers.get('Authorization', '').startswith('Bearer ')) or not self.authorized():
             self.reply(401, {"error": "Unauthorized"})
             return
         if route.path == "/glide-api/check":
@@ -134,7 +134,9 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(404, {"error": "Not found"})
 
     def do_POST(self):
-        if not self.authorized():
+        # Cookie auth is only for the streaming gateway; profile mutations must
+        # carry the browser capability explicitly, preventing cross-site forms.
+        if not self.headers.get('Authorization', '').startswith('Bearer ') or not self.authorized():
             self.reply(401, {"error": "Unauthorized"})
             return
         route = urlsplit(self.path).path
@@ -207,6 +209,7 @@ class Handler(BaseHTTPRequestHandler):
             if pids:
                 try:
                     os.kill(int(pids[-1]), signal.SIGTERM)
+                    (RUNTIME / 'signaled').touch()
                 except ProcessLookupError:
                     pass
             (RUNTIME / "stop").touch()

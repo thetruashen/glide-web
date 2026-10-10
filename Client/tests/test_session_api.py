@@ -67,6 +67,10 @@ class ProfileTests(unittest.TestCase):
                     with self.assertRaises(HTTPError) as denied:
                         request('status', token='another-player')
                     self.assertEqual(denied.exception.code, 401)
+                    with self.assertRaises(HTTPError) as csrf:
+                        urlopen(Request(origin + '/glide-api/start', data=b'ignored', headers={'Cookie': 'glide_session=private-session-capability'}), timeout=5)
+                    self.assertEqual(csrf.exception.code, 401)
+                    self.assertFalse((runtime / 'start').exists())
                     data = archive([('saves/World/level.dat', b'private-world'), ('mods/test.jar', b'private-mod')])
                     upload_id = '12345678-1234-1234-1234-123456789abc'
                     with request(f'upload/{upload_id}/0', data) as response:
