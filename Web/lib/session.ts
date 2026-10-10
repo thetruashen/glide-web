@@ -1,6 +1,6 @@
 import type { Profile } from './storage';
 export type Session = { id: string; profileId: string; repo: string; privateKey: JsonWebKey; runId?: number; url?: string; secret?: string; created: number; uploaded?: boolean };
-export type Status = { stage: string; started: boolean; finished: boolean; MICROSOFT_LOGIN_URL?: string; MICROSOFT_LOGIN_CODE?: string; MINECRAFT_ACCOUNT_NAME?: string };
+export type Status = { stage: string; started: boolean; finished: boolean; exitCode?: number; error?: string; MICROSOFT_LOGIN_URL?: string; MICROSOFT_LOGIN_CODE?: string; MINECRAFT_ACCOUNT_NAME?: string };
 const bytes = (value: string) => Uint8Array.from(atob(value), c => c.charCodeAt(0));
 const b64 = (value: ArrayBuffer) => btoa(String.fromCharCode(...new Uint8Array(value)));
 export function persistSession(s: Session) { sessionStorage.setItem('glide-session', JSON.stringify(s)); }
@@ -44,7 +44,11 @@ export async function connect(session: Session, token: string): Promise<Session>
   const decoded = await crypto.subtle.decrypt({ name: 'RSA-OAEP' }, key, bytes(step.name.slice('CONNECT::'.length)));
   const info = JSON.parse(new TextDecoder().decode(decoded));
   if (!/^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(info.url) || !/^[\w-]{40,}$/.test(info.secret)) throw new Error('Invalid connection response');
-  session = { ...session, url: info.url, secret: info.secret }; persistSession(session); return session;
+  session = { ...session, url: info.url, secret: info.secret };
+  // Quick-tunnel DNS and HTTPS may lag behind its announcement.
+  // Verify connectivity before mounting an iframe that could cache a DNS failure.
+  await runner(session, 'status');
+  persistSession(session); return session;
 }
 export async function runner(session: Session, path: string, body?: Blob | string): Promise<Response> {
   if (!session.url || !session.secret) throw new Error('Runner is not connected yet');

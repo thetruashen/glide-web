@@ -87,7 +87,7 @@ export default function Home() {
           await checkpoint(s);
           if (s.runId) await github(s.repo, `actions/runs/${s.runId}/cancel`, token, {}, 'POST');
           sessionStorage.removeItem('glide-session'); setSession(undefined); setStatus(undefined);
-          setMessage('Session finished. Your final save is in this browser.');
+          setMessage(current.error || 'Session finished. Your final save is in this browser.');
         } else {
           setMessage(current.stage === 'minecraft-running' ? 'Connected. Your world is ready.' : `Preparing game · ${current.stage.replaceAll('-', ' ')}`);
           if (current.stage === 'minecraft-running' && Date.now() - snapshotTime.current > 60000) await checkpoint(s);

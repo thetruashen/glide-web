@@ -111,6 +111,11 @@ class Handler(BaseHTTPRequestHandler):
             stage = re.findall(r"GLIDE_STAGE=([^\r\n]+)", text)
             pid = re.findall(r"MINECRAFT_PID=(\d+)", text)
             result = {"stage": stage[-1] if stage else "waiting-for-profile", "started": (RUNTIME / "start").exists(), "finished": (RUNTIME / "finished").exists()}
+            codes = re.findall(r'MINECRAFT_EXIT_CODE=(-?\d+)', text)
+            if codes:
+                result['exitCode'] = int(codes[-1])
+            if result['finished'] and ('Traceback (most recent call last)' in text or (codes and int(codes[-1]) != 0)):
+                result['error'] = 'Minecraft failed to start or exited with an error. Check mod compatibility and try a vanilla profile.'
             for key in ("MICROSOFT_LOGIN_URL", "MICROSOFT_LOGIN_CODE", "MINECRAFT_ACCOUNT_NAME"):
                 values = re.findall(re.escape(key) + r"=([^\r\n]+)", text)
                 if values:
