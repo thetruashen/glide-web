@@ -1,0 +1,197 @@
+name: Glide Browser Session
+run-name: Glide · ${{ inputs.session_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      session_id:
+        description: Browser-generated session UUID
+        required: true
+        type: string
+      request:
+        description: JSON settings and browser public key (no private data)
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: glide-${{ inputs.session_id }}
+  cancel-in-progress: false
+jobs:
+  session:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GLIDE_REQUEST: ${{ inputs.request }}
+      GLIDE_MINECRAFT_DIR: /home/runner/glide-minecraft
+      DISPLAY: ':99'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: Client/requirements.txt
+      - run: pip install -r Client/requirements.txt
+      - name: Validate session and select Java from official metadata
+        id: request
+        run: python Client/scripts/prepare_request.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ steps.request.outputs.java }}
+      - name: Restore immutable game cache
+        id: game
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /home/runner/glide-minecraft/assets
+            /home/runner/glide-minecraft/libraries
+            /home/runner/glide-minecraft/versions
+            /home/runner/glide-minecraft/.glide-install
+          key: game-v3-${{ runner.os }}-${{ runner.arch }}-${{ steps.request.outputs.java }}-${{ steps.request.outputs.version }}-${{ steps.request.outputs.loader }}-${{ hashFiles('Client/scripts/glide_launch.py', 'Client/requirements.txt') }}
+      - name: Prepare game once, reuse installed loader and processed jars
+        run: GLIDE_INSTALL_ONLY=1 python Client/scripts/glide_launch.py
+      - name: Save game cache before playing
+        if: steps.game.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /home/runner/glide-minecraft/assets
+            /home/runner/glide-minecraft/libraries
+            /home/runner/glide-minecraft/versions
+            /home/runner/glide-minecraft/.glide-install
+          key: ${{ steps.game.outputs.cache-primary-key }}
+      - name: Install desktop packages in one transaction
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends xvfb dwm suckless-tools stterm curl jq x11-utils pulseaudio libgl1-mesa-dri libglx-mesa0 libgl1 mesa-utils x11-xserver-utils nginx ffmpeg
+      - name: Restore streaming downloads
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/glide-tools
+          key: streaming-ubuntu24-amd64-selkies2.0.0-v1
+      - name: Install streaming tools
+        run: |
+          set -euo pipefail
+          mkdir -p /home/runner/glide-tools
+          cd /home/runner/glide-tools
+          PKG=selkies-2.0.0-ubuntu24.04-amd64.deb
+          test -s "$PKG" || curl -fL --retry 3 "https://github.com/selkies-project/selkies/releases/download/2.0.0/$PKG" -o "$PKG"
+          sudo apt-get install -y "$(pwd)/$PKG"
+          test -s cloudflared || curl -fL --retry 3 https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
+          chmod +x cloudflared
+          PASSWORD=$(python -c 'import secrets; print(secrets.token_urlsafe(32))')
+          echo "::add-mask::$PASSWORD"
+          echo "GLIDE_SELKIES_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
+      - name: Start desktop and audio at selected resolution
+        run: |
+          set -euo pipefail
+          Xvfb :99 -screen 0 "${GLIDE_RENDER_WIDTH}x${GLIDE_RENDER_HEIGHT}x24" -ac +extension GLX +extension RANDR >/tmp/glide-xorg.log 2>&1 &
+          for i in $(seq 1 30); do xdpyinfo -display :99 >/dev/null 2>&1 && break; sleep 1; done
+          xdpyinfo -display :99 >/dev/null
+          xset -display :99 m 0 0
+          dwm >/tmp/glide-dwm.log 2>&1 &
+          export XDG_RUNTIME_DIR=/tmp/glide-runtime
+          export PULSE_RUNTIME_PATH="$XDG_RUNTIME_DIR/pulse"
+          mkdir -p "$XDG_RUNTIME_DIR" "$PULSE_RUNTIME_PATH"
+          chmod 700 "$XDG_RUNTIME_DIR"
+          unset PULSE_SERVER
+          pulseaudio --start --daemonize=yes --system=false --exit-idle-time=-1 --log-target=file:/tmp/glide-pulseaudio.log
+          export PULSE_SERVER="unix:$PULSE_RUNTIME_PATH/native"
+          for i in $(seq 1 30); do test -S "$PULSE_RUNTIME_PATH/native" && break; sleep 1; done
+          pactl load-module module-virtual-sink sink_name=glide_game_sink sink_properties=device.description=GlideGame
+          pactl set-default-sink glide_game_sink
+          pactl set-default-source glide_game_sink.monitor
+          {
+            echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
+            echo "PULSE_RUNTIME_PATH=$PULSE_RUNTIME_PATH"
+            echo "PULSE_SERVER=$PULSE_SERVER"
+            echo "GLIDE_PULSE_SINK=glide_game_sink"
+            echo "GLIDE_PULSE_SOURCE=glide_game_sink.monitor"
+          } >> "$GITHUB_ENV"
+          selkies --public --port=8080 --mode=websockets --enable-https=false --basic-auth-user=glide --basic-auth-password="$GLIDE_SELKIES_PASSWORD" --encoder=h264enc --enable-resize=false --raw-pointer-motion=true --video-framerate=60 --video-bitrate=8000 --congestion-control >/tmp/glide-selkies.log 2>&1 &
+          for i in $(seq 1 60); do curl -fsS -u "glide:$GLIDE_SELKIES_PASSWORD" http://127.0.0.1:8080/ >/dev/null 2>&1 && break; sleep 1; done
+          curl -fsS -u "glide:$GLIDE_SELKIES_PASSWORD" http://127.0.0.1:8080/ >/dev/null
+      - name: Start authenticated profile API and streaming gateway
+        run: |
+          set -euo pipefail
+          python Client/scripts/session_api.py >/tmp/glide-api.log 2>&1 &
+          for i in $(seq 1 30); do test -s /tmp/glide-session/secret && break; sleep 1; done
+          BASIC=$(printf 'glide:%s' "$GLIDE_SELKIES_PASSWORD" | base64 -w0)
+          echo "::add-mask::$BASIC"
+          sudo tee /etc/nginx/conf.d/glide.conf >/dev/null <<EOF
+          server {
+            listen 8888;
+            access_log off;
+            error_log /tmp/glide-nginx-errors.log crit;
+            client_max_body_size 512m;
+            location /glide-api/ {
+              proxy_pass http://127.0.0.1:8765;
+              proxy_request_buffering off;
+              proxy_read_timeout 300s;
+            }
+            location = /_auth {
+              internal;
+              proxy_pass http://127.0.0.1:8765/glide-api/check;
+              proxy_pass_request_body off;
+              proxy_set_header Content-Length "";
+            }
+            location / {
+              auth_request /_auth;
+              proxy_pass http://127.0.0.1:8080;
+              proxy_http_version 1.1;
+              proxy_set_header Authorization "Basic $BASIC";
+              proxy_set_header Upgrade \$http_upgrade;
+              proxy_set_header Connection "upgrade";
+              proxy_read_timeout 10800s;
+              add_header Referrer-Policy no-referrer always;
+            }
+          }
+          EOF
+          sudo nginx -t
+          sudo systemctl restart nginx
+          /home/runner/glide-tools/cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8888 >/tmp/glide-cloudflared.log 2>&1 &
+          for i in $(seq 1 90); do
+            URL=$(grep -Eo 'https://[-a-z0-9]+[.]trycloudflare[.]com' /tmp/glide-cloudflared.log | head -1 || true)
+            if [ -n "$URL" ]; then printf '%s' "$URL" >/tmp/glide-session-url.txt; break; fi
+            sleep 1
+          done
+          test -s /tmp/glide-session-url.txt
+      - name: Encrypt connection for launching browser
+        id: connection
+        run: python Client/scripts/session_api.py bootstrap
+      - name: CONNECT::${{ steps.connection.outputs.envelope }}
+        run: echo "Private connection is ready for the launching browser."
+      - name: Wait for browser profile, play, then allow final download
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 900); do
+            test -f /tmp/glide-session/start && break
+            test -f /tmp/glide-session/stop && exit 0
+            sleep 1
+          done
+          test -f /tmp/glide-session/start
+          export GLIDE_RUNTIME_AGENT=""
+          python Client/scripts/glide_launch.py >/tmp/glide-launch.log 2>&1 &
+          GAME=$!
+          while kill -0 "$GAME" 2>/dev/null; do sleep 5; done
+          wait "$GAME" || true
+          touch /tmp/glide-session/finished
+          sleep 300
+      - name: Remove personal files
+        if: always()
+        run: |
+          python - <<'PY'
+          import shutil
+          from pathlib import Path
+          root = Path('/home/runner/glide-minecraft')
+          for name in ('saves','mods','config','resourcepacks','shaderpacks','datapacks','options.txt','optionsof.txt','servers.dat'):
+              path = root / name
+              if path.is_dir(): shutil.rmtree(path)
+              elif path.exists(): path.unlink()
+          shutil.rmtree('/tmp/glide-session', ignore_errors=True)
+          Path('/tmp/glide-launch.log').unlink(missing_ok=True)
+          PY

@@ -1,0 +1,8 @@
+{
+  "name": "glide-web",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": { "dev": "next dev", "build": "next build", "typecheck": "tsc --noEmit" },
+  "dependencies": { "next": "16.4.0", "react": "19.3.0", "react-dom": "19.3.0", "jszip": "3.10.1", "idb": "8.0.3" },
+  "devDependencies": { "typescript": "5.9.3", "@types/node": "22.19.11", "@types/react": "19.2.14", "@types/react-dom": "19.2.3" }
+}

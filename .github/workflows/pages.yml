@@ -1,0 +1,53 @@
+name: Publish Glide website
+on:
+  push:
+    branches: [main]
+    paths: ['Web/**', 'Client/scripts/catalog.py', 'Client/requirements.txt', '.github/workflows/pages.yml']
+  workflow_dispatch:
+  schedule:
+    - cron: '0 9 * * 1'
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: Web/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r Client/requirements.txt
+      - name: Refresh full version and loader catalog
+        run: python Client/scripts/catalog.py Web/public/versions.json
+      - uses: actions/configure-pages@v5
+      - name: Compile Next.js website
+        working-directory: Web
+        env:
+          NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}
+          NEXT_PUBLIC_GLIDE_REPO: ${{ github.repository }}
+        run: |
+          npm ci
+          npm run build
+          touch out/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: Web/out
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment

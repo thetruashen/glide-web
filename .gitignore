@@ -1,0 +1,13 @@
+**/target/
+**/__pycache__/
+.inspect/
+node_modules/
+.next/
+out/
+.env*
+!.env.example
+Client/glide-runtime-agent/build/
+*.log
+.venv/
+.publish/
+*.tsbuildinfo

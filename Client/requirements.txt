@@ -1,0 +1,2 @@
+minecraft-launcher-lib==8.0
+cryptography==46.0.5
