@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
 import { cfPackSettings, compatible, fileFetcher, installPack, packSettings, requiredReleases, safePath, verified } from '../lib/install-content';
-import { clearCatalogCache, type Release } from '../lib/catalog-api';
+import { clearCatalogCache, downloadable, type Release } from '../lib/catalog-api';
 
 const profile = { version: '1.21.1', loader: 'neoforge' };
 const signal = () => new AbortController().signal;
@@ -75,4 +75,22 @@ test('required dependency graph handles cycles without duplicate installation', 
   globalThis.fetch=async url=>{const path=String(url);if(path.endsWith('/version/dep'))return Response.json(version('dep','B',[{dependency_type:'required',version_id:'root',project_id:'A'}]));if(path.endsWith('/version/root'))return Response.json(version('root','A',[]));throw new Error(`Unexpected API request ${path}`);};
   try {const root:Release={id:'root',projectId:'A',provider:'modrinth',title:'A',version:'1',date:'',gameVersions:['1.21.1'],loaders:['neoforge'],files:[],dependencies:[{versionId:'dep',projectId:'B',type:'required'}]};assert.deepEqual((await requiredReleases(root,profile,signal())).map(r=>r.projectId),['A','B']);}
   finally {globalThis.fetch=original;clearCatalogCache();}
+});
+test('restricted CF URLs are never invented; only an author-published identical Modrinth file is accepted', async () => {
+  clearCatalogCache();const original=globalThis.fetch;
+  const storageDescriptor=Object.getOwnPropertyDescriptor(globalThis,'sessionStorage');
+  Object.defineProperty(globalThis,'sessionStorage',{configurable:true,value:{getItem:()=> 'unit-test-key'}});
+  globalThis.fetch=async url=>{
+    const path=String(url);
+    if(path.endsWith('/mods/123'))return Response.json({data:{id:123,name:'Test',classId:6,links:{websiteUrl:'https://www.curseforge.com/minecraft/mc-mods/test'}}});
+    if(path.endsWith('/download-url'))return new Response('',{status:403});
+    if(path.includes('/version_file/'))return Response.json({files:[{size:3,url:'https://cdn.modrinth.com/author-published.jar',hashes:{sha1:'a9993e364706816aba3e25717850c26c9cd0d89d'}}]});
+    throw new Error(`Unexpected request ${path}`);
+  };
+  try {
+    const release:Release={id:'456',projectId:'123',provider:'curseforge',title:'Test',version:'1',date:'',gameVersions:['1.21.1'],loaders:['neoforge'],dependencies:[],files:[{name:'original.jar',size:3,hash:{algorithm:'SHA-1',value:'a9993e364706816aba3e25717850c26c9cd0d89d'}}]};
+    const file=await downloadable(release);
+    assert.equal(file.url,'https://cdn.modrinth.com/author-published.jar');
+    assert.equal(file.manualUrl,'https://www.curseforge.com/minecraft/mc-mods/test/files/456');
+  }finally {globalThis.fetch=original;if(storageDescriptor)Object.defineProperty(globalThis,'sessionStorage',storageDescriptor);else Reflect.deleteProperty(globalThis,'sessionStorage');clearCatalogCache();}
 });

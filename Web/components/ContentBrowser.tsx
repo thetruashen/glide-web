@@ -40,6 +40,7 @@ export default function ContentBrowser({ profile, type, locked, initialProject, 
   useEffect(() => { setOffset(0); }, [query, provider, type, sort, onlyCompatible, profile.version, profile.loader]);
   useEffect(() => {
     const abort = new AbortController();
+    setLoading(true); setProjects([]); setTotal(0); setError('');
     const timer = setTimeout(async () => {
       setLoading(true); setError('');
       try {
@@ -55,7 +56,7 @@ export default function ContentBrowser({ profile, type, locked, initialProject, 
     const request = ++detailRequest.current;
     setSelected(project); setDescription(''); setVersions([]); setVersionId(''); setDetailsLoading(true); setError('');
     try {
-      const [body, files] = await Promise.all([getDescription(project), releases(project, type === 'modpack' ? undefined : profile.version, type === 'mod' ? profile.loader : undefined)]);
+      const [body, files] = await Promise.all([getDescription(project), releases(project, type === 'modpack' && !onlyCompatible ? undefined : profile.version, type === 'mod' ? profile.loader : undefined)]);
       if (request !== detailRequest.current) return;
       setDescription(body); setVersions(files); setVersionId(files[0]?.id || '');
     } catch (e) { if (request === detailRequest.current) setError(String(e)); } finally { if (request === detailRequest.current) setDetailsLoading(false); }

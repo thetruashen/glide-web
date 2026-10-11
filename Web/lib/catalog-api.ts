@@ -90,6 +90,16 @@ export async function downloadable(release: Release): Promise<CatalogFile> {
     const project = await getProject('curseforge', release.projectId);
     file.manualUrl = `${project.url}/files/${release.id}`;
     if (!file.url) try { file.url = (await api('curseforge', `/mods/${release.projectId}/files/${release.id}/download-url`)).data || undefined; } catch { /* Author restrictions require a manual download, never a fabricated CDN URL. */ }
+    if (!file.url && file.hash?.algorithm === 'SHA-1') {
+      // An author may publish the same binary on Modrinth while disabling CF
+      // third-party downloads. Use only an API-returned, identical hash/size
+      // match from that public release; never reconstruct a restricted CF URL.
+      try {
+        const mirror = await api('modrinth', `/version_file/${file.hash.value}?algorithm=sha1`);
+        const match = mirror.files.find((f: any) => f.hashes.sha1?.toLowerCase() === file.hash!.value.toLowerCase() && f.size === file.size);
+        if (match) file.url = match.url;
+      } catch { /* No author-published exact match: ask for the official manual download. */ }
+    }
   }
   return file;
 }
