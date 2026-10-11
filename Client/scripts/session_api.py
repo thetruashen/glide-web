@@ -119,7 +119,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(401, {"error": "Unauthorized"})
                 return
             self.send_response(302)
-            self.send_header("Set-Cookie", f"glide_session={token}; Path=/; Secure; HttpOnly; SameSite=None; Max-Age=21600")
+            self.send_header("Set-Cookie", f"glide_session={token}; Path=/; Secure; HttpOnly; SameSite=None; Partitioned; Max-Age=21600")
             self.send_header("Location", "/")
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("Cache-Control", "no-store")

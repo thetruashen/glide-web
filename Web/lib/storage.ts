@@ -13,14 +13,20 @@ export async function saveMods(id: string, mods: Mod[]) { await (await db()).put
 export async function commitInstallation(profile: Profile, mods: Mod[], backup?: Blob) {
   const database = await db();
   const tx = database.transaction(['profiles', 'files'], 'readwrite');
-  await tx.objectStore('profiles').put({ ...profile, updated: Date.now() });
-  await tx.objectStore('files').put(mods, `${profile.id}:mods`);
-  if (backup) {
-    const previous = await tx.objectStore('files').get(`${profile.id}:backup`);
-    if (previous) await tx.objectStore('files').put(previous, `${profile.id}:previous`);
-    await tx.objectStore('files').put(backup, `${profile.id}:backup`);
+  try {
+    await tx.objectStore('profiles').put({ ...profile, updated: Date.now() });
+    await tx.objectStore('files').put(mods, `${profile.id}:mods`);
+    if (backup) {
+      const previous = await tx.objectStore('files').get(`${profile.id}:backup`);
+      if (previous) await tx.objectStore('files').put(previous, `${profile.id}:previous`);
+      await tx.objectStore('files').put(backup, `${profile.id}:backup`);
+    }
+    await tx.done;
+  } catch (error) {
+    try { tx.abort(); } catch {}
+    await tx.done.catch(() => {});
+    throw error;
   }
-  await tx.done;
 }
 export async function getBackup(id: string): Promise<Blob | undefined> { return (await db()).get('files', `${id}:backup`); }
 export async function storeBackup(id: string, blob: Blob) {
