@@ -15,10 +15,35 @@ from urllib.parse import parse_qs, urlsplit
 
 ROOT = Path(os.environ.get("GLIDE_MINECRAFT_DIR", "/home/runner/glide-minecraft"))
 RUNTIME = Path(os.environ.get("GLIDE_SESSION_DIR", "/tmp/glide-session"))
-ALLOWED = {"saves", "mods", "config", "resourcepacks", "shaderpacks", "datapacks"}
+ALLOWED = {"saves", "mods", "config", "resourcepacks", "shaderpacks", "datapacks", "kubejs", "scripts", "defaultconfigs", "patchouli_books", "fancymenu", "openloader", "paxi", "global_packs", "packmenu", "journeymap"}
 FILES = {"options.txt", "optionsof.txt", "servers.dat"}
 MAX_BYTES = 512 * 1024 * 1024
 LOCK = threading.RLock()
+DOWNLOAD_HOSTS = {'cdn.modrinth.com','edge.forgecdn.net','mediafilez.forgecdn.net','media.forgecdn.net','github.com','raw.githubusercontent.com','gitlab.com','release-assets.githubusercontent.com','objects.githubusercontent.com'}
+
+
+def catalog_download(url, expected_size=0):
+    import requests
+    for _ in range(5):
+        parsed = urlsplit(url)
+        if parsed.scheme != 'https' or parsed.hostname not in DOWNLOAD_HOSTS or parsed.username or parsed.password or parsed.port not in (None,443):
+            raise ValueError('Unsupported download host')
+        with requests.get(url, stream=True, allow_redirects=False, timeout=(15,120)) as response:
+            if response.is_redirect:
+                from urllib.parse import urljoin
+                url = urljoin(url, response.headers['Location'])
+                continue
+            response.raise_for_status()
+            declared=int(response.headers.get('Content-Length','0'))
+            if declared>MAX_BYTES or expected_size>MAX_BYTES:
+                raise ValueError('File exceeds download limit')
+            result=io.BytesIO()
+            for chunk in response.iter_content(1024*1024):
+                if result.tell()+len(chunk)>MAX_BYTES: raise ValueError('File exceeds download limit')
+                result.write(chunk)
+            if expected_size and result.tell()!=expected_size: raise ValueError('File size mismatch')
+            return result.getvalue()
+    raise ValueError('Too many download redirects')
 
 
 def extract_archive(data, root):
@@ -140,6 +165,16 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(401, {"error": "Unauthorized"})
             return
         route = urlsplit(self.path).path
+        if route == '/glide-api/catalog-file':
+            try:
+                length=int(self.headers.get('Content-Length','0'))
+                if not 0<length<=4096: raise ValueError('Invalid request')
+                request=json.loads(self.rfile.read(length))
+                data=catalog_download(request['url'],max(0,int(request.get('size') or 0)))
+                self.headers_out(200,'application/octet-stream',len(data));self.wfile.write(data)
+            except Exception:
+                self.reply(400,{'error':'Download refused or unavailable. Use the official manual download page.'})
+            return
         upload = re.fullmatch(r'/glide-api/upload/([a-f0-9-]{36})/(\d{1,2})', route)
         finish = re.fullmatch(r'/glide-api/import/([a-f0-9-]{36})/(\d{1,2})', route)
         if upload or finish:

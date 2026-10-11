@@ -39,6 +39,7 @@ jobs:
           NEXT_PUBLIC_GLIDE_REPO: ${{ github.repository }}
         run: |
           npm ci
+          npm test
           npm run build
           touch out/.nojekyll
       - uses: actions/upload-pages-artifact@v3

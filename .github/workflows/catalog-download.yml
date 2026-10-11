@@ -1,0 +1,66 @@
+name: Private catalog download helper
+run-name: Glide · ${{ inputs.session_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      session_id:
+        type: string
+        required: true
+      request:
+        description: Website origin and browser public key only
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  download:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GLIDE_REQUEST: ${{ inputs.request }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: Client/requirements.txt
+      - run: pip install -r Client/requirements.txt
+      - name: Validate browser origin
+        run: |
+          python - <<'PY'
+          import json,os
+          from urllib.parse import urlsplit
+          value=json.loads(os.environ['GLIDE_REQUEST'])['origin']
+          origin=urlsplit(value)
+          if origin.scheme not in ('http','https') or not origin.netloc or any(c in value for c in '\r\n'): raise ValueError('Invalid origin')
+          with open(os.environ['GITHUB_ENV'],'a') as env: env.write('GLIDE_WEB_ORIGIN='+value+'\n')
+          PY
+      - uses: actions/cache/restore@v4
+        with:
+          path: /home/runner/glide-tools
+          key: streaming-ubuntu24-amd64-selkies2.0.0-v1
+      - name: Start temporary file relay
+        run: |
+          set -euo pipefail
+          mkdir -p /home/runner/glide-tools
+          test -s /home/runner/glide-tools/cloudflared || curl -fL --retry 3 https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /home/runner/glide-tools/cloudflared
+          chmod +x /home/runner/glide-tools/cloudflared
+          python Client/scripts/session_api.py >/tmp/glide-api.log 2>&1 &
+          /home/runner/glide-tools/cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8765 >/tmp/glide-cloudflared.log 2>&1 &
+          for i in $(seq 1 90); do
+            URL=$(grep -Eo 'https://[-a-z0-9]+[.]trycloudflare[.]com' /tmp/glide-cloudflared.log | head -1 || true)
+            if [ -n "$URL" ] && [ -s /tmp/glide-session/secret ]; then printf '%s' "$URL" >/tmp/glide-session-url.txt; break; fi
+            sleep 1
+          done
+          test -s /tmp/glide-session-url.txt
+      - name: Encrypt private connection
+        id: connection
+        run: python Client/scripts/session_api.py bootstrap
+      - name: CONNECT::${{ steps.connection.outputs.envelope }}
+        run: echo 'Private download helper is ready.'
+      - name: Wait for download completion
+        run: |
+          for i in $(seq 1 600); do test -f /tmp/glide-session/stop && exit 0; sleep 1; done

@@ -51,7 +51,12 @@ jobs:
             /home/runner/glide-minecraft/libraries
             /home/runner/glide-minecraft/versions
             /home/runner/glide-minecraft/.glide-install
-          key: game-v3-${{ runner.os }}-${{ runner.arch }}-${{ steps.request.outputs.java }}-${{ steps.request.outputs.version }}-${{ steps.request.outputs.loader }}-${{ hashFiles('Client/scripts/glide_launch.py', 'Client/requirements.txt') }}
+          key: game-v3-${{ runner.os }}-${{ runner.arch }}-${{ steps.request.outputs.java }}-${{ steps.request.outputs.version }}-${{ steps.request.outputs.loader-cache }}-${{ hashFiles('Client/scripts/glide_launch.py', 'Client/requirements.txt') }}
+          restore-keys: |
+            game-v3-${{ runner.os }}-${{ runner.arch }}-${{ steps.request.outputs.java }}-${{ steps.request.outputs.version }}-${{ steps.request.outputs.loader }}-${{ hashFiles('Client/scripts/glide_launch.py', 'Client/requirements.txt') }}
+      - name: Prepare exact modpack loader
+        if: env.GLIDE_LOADER_VERSION != '' && steps.game.outputs.cache-hit != 'true'
+        run: python Client/scripts/install_pinned_loader.py
       - name: Prepare game once, reuse installed loader and processed jars
         run: GLIDE_INSTALL_ONLY=1 python Client/scripts/glide_launch.py
       - name: Save game cache before playing
@@ -195,7 +200,7 @@ jobs:
           import shutil
           from pathlib import Path
           root = Path('/home/runner/glide-minecraft')
-          for name in ('saves','mods','config','resourcepacks','shaderpacks','datapacks','options.txt','optionsof.txt','servers.dat'):
+          for name in ('saves','mods','config','resourcepacks','shaderpacks','datapacks','kubejs','scripts','defaultconfigs','patchouli_books','fancymenu','openloader','paxi','global_packs','packmenu','journeymap','options.txt','optionsof.txt','servers.dat'):
               path = root / name
               if path.is_dir(): shutil.rmtree(path)
               elif path.exists(): path.unlink()

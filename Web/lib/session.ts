@@ -1,10 +1,10 @@
 import type { Profile } from './storage';
-export type Session = { id: string; profileId: string; repo: string; privateKey: JsonWebKey; runId?: number; url?: string; secret?: string; created: number; uploaded?: boolean };
+export type Session = { id: string; profileId: string; repo: string; privateKey: JsonWebKey; runId?: number; url?: string; secret?: string; created: number; uploaded?: boolean; workflow?: string };
 export class RunnerEnded extends Error {}
 export type Status = { stage: string; started: boolean; finished: boolean; exitCode?: number; error?: string; MICROSOFT_LOGIN_URL?: string; MICROSOFT_LOGIN_CODE?: string; MINECRAFT_ACCOUNT_NAME?: string };
 const bytes = (value: string) => Uint8Array.from(atob(value), c => c.charCodeAt(0));
 const b64 = (value: ArrayBuffer) => btoa(String.fromCharCode(...new Uint8Array(value)));
-export function persistSession(s: Session) { sessionStorage.setItem('glide-session', JSON.stringify(s)); }
+export function persistSession(s: Session) { sessionStorage.setItem(s.workflow === 'catalog-download.yml' ? 'glide-catalog-helper' : 'glide-session', JSON.stringify(s)); }
 export async function github(repo: string, path: string, token: string, body?: unknown, method?: string) {
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error('Repository must be owner/name');
   const response = await fetch(`https://api.github.com/repos/${repo}${path ? '/' + path : ''}`, {
@@ -31,7 +31,7 @@ export async function launch(profile: Profile, repo: string, token: string): Pro
 }
 export async function connect(session: Session, token: string): Promise<Session> {
   if (!session.runId) {
-    const runs = await github(session.repo, 'actions/workflows/glide-session.yml/runs?event=workflow_dispatch&per_page=100', token);
+    const runs = await github(session.repo, `actions/workflows/${session.workflow || 'glide-session.yml'}/runs?event=workflow_dispatch&per_page=100`, token);
     const run = runs.workflow_runs.find((run: { display_title: string }) => run.display_title === `Glide · ${session.id}`);
     if (!run) return session;
     session = { ...session, runId: run.id }; persistSession(session);
@@ -58,6 +58,13 @@ export async function runner(session: Session, path: string, body?: Blob | strin
   return response;
 }
 export function streamURL(session: Session) { return `${session.url}/glide-api/login?ticket=${encodeURIComponent(session.secret || '')}`; }
+export async function launchDownloadHelper(repo: string, token: string): Promise<Session> {
+  const keys = await crypto.subtle.generateKey({ name:'RSA-OAEP', modulusLength:3072, publicExponent:new Uint8Array([1,0,1]), hash:'SHA-256' },true,['encrypt','decrypt']);
+  const session: Session = { id:crypto.randomUUID(), profileId:'catalog', repo, privateKey:await crypto.subtle.exportKey('jwk',keys.privateKey), created:Date.now(), workflow:'catalog-download.yml' };
+  const info = await github(repo,'',token);
+  await github(repo,'actions/workflows/catalog-download.yml/dispatches',token,{ref:info.default_branch,inputs:{session_id:session.id,request:JSON.stringify({publicKey:b64(await crypto.subtle.exportKey('spki',keys.publicKey)),origin:location.origin})}});
+  persistSession(session); return session;
+}
 export async function uploadProfile(session: Session, blob: Blob) {
   if (blob.size > 512 * 1048576) throw new Error('Profile exceeds the 512 MB transfer limit.');
   const id = crypto.randomUUID(), size = 8 * 1048576;

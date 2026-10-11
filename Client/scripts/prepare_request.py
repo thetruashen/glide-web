@@ -18,6 +18,9 @@ major = metadata.json().get("javaVersion", {}).get("majorVersion", 8)
 loader = config.get("loader", "vanilla")
 if loader not in {"vanilla", "fabric", "quilt", "forge", "neoforge"}:
     raise ValueError("Invalid loader")
+loader_version = config.get('loaderVersion') or ''
+if loader_version and (loader == 'vanilla' or not re.fullmatch(r'[A-Za-z0-9_.+-]{1,80}', loader_version)):
+    raise ValueError('Invalid pinned loader version')
 if not re.fullmatch(r"[A-Za-z0-9_]{3,16}", config.get("username", "GlidePlayer")):
     raise ValueError("Username must be 3–16 letters, numbers or underscores")
 origin = urlsplit(config.get("origin", ""))
@@ -40,6 +43,7 @@ settings = {
     "GLIDE_RENDER_WIDTH": str(max(640, min(int(config.get("width", 1280)), 1920))),
     "GLIDE_RENDER_HEIGHT": str(max(360, min(int(config.get("height", 720)), 1080))),
     "GLIDE_MAX_RESTARTS": "0",
+    "GLIDE_LOADER_VERSION": loader_version,
 }
 with open(os.environ["GITHUB_ENV"], "a") as env:
     for key, value in settings.items():
@@ -48,3 +52,4 @@ with open(os.environ["GITHUB_ENV"], "a") as env:
         env.write(f"{key}={value}\n")
 with open(os.environ["GITHUB_OUTPUT"], "a") as output:
     output.write(f"java={major}\nversion={version['id']}\nloader={loader}\n")
+    output.write(f"loader-cache={loader + '-' + loader_version if loader_version else loader}\n")

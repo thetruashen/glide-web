@@ -12,6 +12,18 @@ Microsoft mode uses a registered Microsoft public-client application ID with dev
 
 Use the stream’s Gaming Mode to capture the mouse and keyboard; its Selkies client provides raw pointer motion. Use Fullscreen or the stream's own fullscreen control. The page requests Escape keyboard lock when supported, allowing a short Escape press for game menus and hold-Escape to leave fullscreen in compatible Chromium browsers. Keyboard lock may require browser permission; other browsers fall back to their normal Escape behavior. [Chrome keyboard lock documentation](https://developer.chrome.com/blog/better-full-screen-mode). If third-party cookies prevent embedding, use Open stream, which authenticates in a separate top-level tab.
 
+## Mods and modpacks
+
+The launcher browses **Modrinth and CurseForge** directly from the browser: search, pagination, descriptions, compatible releases, mod installation and required dependencies. Resource packs and shaders also have dedicated catalog sections. Modrinth needs no key. Enter a CurseForge API key in its catalog tab; it is stored only in tab session storage, sent only to api.curseforge.com, and never bundled in the site or forwarded to GitHub/CDNs.
+
+Install a catalog modpack or import a `.mrpack` / CurseForge manifest `.zip`. The installer verifies provider checksums, downloads required client files, applies overrides (including scripts/defaultconfigs), and commits a **new** browser-local instance only after every file succeeds. It preserves existing worlds. The pack's exact Minecraft and loader versions are retained; pinned loader caches can reuse the normal game cache without invalidating existing prewarms.
+
+Some authors disable third-party downloads or download hosts may block browser requests. The installer then links to the official file page and asks for the downloaded file; its size and hash must match. It never invents restricted download URLs or silently skips required files. Unsupported pack paths, unresolved dependencies, hash failures and packs beyond the 512 MiB transfer / 1 GiB expanded limits stop installation with an explicit error. Very large packs may exceed these limits or hosted-runner resources. Optional pack entries and server-only Modrinth entries are excluded from client installs.
+
+The supplied animated banner is served as a 30-second MP4 loop (about 3.9 MiB), with a still poster and a pause control. It respects reduced-motion and data-saving settings and pauses while off-screen or the tab is hidden.
+
+Catalog references: [Modrinth API](https://docs.modrinth.com/api/), [CurseForge API](https://docs.curseforge.com/rest-api/), [Modrinth pack format](https://support.modrinth.com/en/articles/8802351-modrinth-modpack-format-mrpack).
+
 ## Saves and multiple players
 
 Each local profile has separate worlds, settings and mods in IndexedDB. Different browsers and devices do not automatically share them. Export/import a profile ZIP to move devices. Clearing site data erases local saves. The site requests persistent storage, but the browser can decline it.
@@ -41,7 +53,7 @@ npm ci
 npm run dev
 ```
 
-`npm run typecheck` and `npm run build` verify the web app. Run `python -m unittest discover -s Client/tests` for archive-boundary tests. `Web/out` is the static production export. No server or separately hosted broker is needed.
+`npm test`, `npm run typecheck` and `npm run build` verify the catalog, pack installer and web app. Run `python -m unittest discover -s Client/tests` for archive-boundary tests. `Web/out` is the static production export. No server or separately hosted broker is needed.
 
 For another repository, enable Pages with **GitHub Actions** as the source and dispatch **Publish Glide website**. Its build sets the repository name as the Next.js base path and the correct default session repository. Forks can change the repository in Connection; public repositories can host Pages subject to the account's plan. The original standalone server workflow is not part of this browser session product.
 
