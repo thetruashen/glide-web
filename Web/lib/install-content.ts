@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
 import {MAX_FILE_BYTES,MAX_PROFILE_BYTES,MAX_EXPANDED_BYTES,MAX_ARCHIVE_FILES} from './limits';
 import {readDownload,type ReportProgress} from './progress';
-import { downloadable, hostedCatalog, getProject, getRelease, releases, type CatalogFile, type ContentType, type Project, type Release } from './catalog-api';
+import { downloadable, primeCurseFiles, hostedCatalog, getProject, getRelease, releases, type CatalogFile, type ContentType, type Project, type Release } from './catalog-api';
 import type { Mod, Profile } from './storage';
 import { safePath } from './profile-paths';
 export { safePath } from './profile-paths';
@@ -184,6 +184,8 @@ export async function installPack(archive: Blob, provider: 'modrinth' | 'cursefo
     const entry = zip.file('manifest.json');
     if (!entry) throw new Error('The archive does not contain CurseForge manifest.json.');
     const manifest = JSON.parse(await entry.async('string'));
+    progress('Resolving pack file metadata…');
+    if(Array.isArray(manifest.files)){const ids=manifest.files.filter((f:any)=>f.required!==false).map((f:any)=>f.fileID);for(let i=0;i<ids.length;i+=1000)await primeCurseFiles(ids.slice(i,i+1000),signal);}
     settings = cfPackSettings(manifest); name = manifest.name || 'CurseForge pack';
     if (!Array.isArray(manifest.files) || manifest.files.length > MAX_FILES) throw new Error('Invalid modpack file list.');
     for (const file of manifest.files) {

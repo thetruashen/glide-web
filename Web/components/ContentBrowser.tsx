@@ -91,7 +91,8 @@ export default function ContentBrowser({ profile, type, locked, initialProject, 
   useEffect(() => { if (initialProject) { setProvider(initialProject.provider); void open(initialProject); } }, [initialProject]);
   useEffect(()=>{let active=true;const release=versions.find(v=>v.id===versionId);setChanges('Loading changelog…');if(release)changelog(release).then(text=>{if(active)setChanges(text);}).catch(e=>{if(active)setChanges(String(e));});return()=>{active=false;};},[versions,versionId]);
   function cancelInstall() { controller.current?.abort(); manualRef.current?.reject(new Error('Installation cancelled')); setManual(undefined); manualRef.current = undefined; }
-  function requestManual(file: CatalogFile): Promise<Blob> {
+  async function requestManual(file: CatalogFile): Promise<Blob> {
+    if(!file.manualUrl&&file.provider==='curseforge'&&file.projectId){const project=await getProject('curseforge',file.projectId);file={...file,manualUrl:`${project.url}/files/${file.releaseId}`};}
     setInstallProgress(current=>({...current,title:'Waiting for author download',detail:file.name}));
     return new Promise((resolve, reject) => { const value = { file, resolve, reject }; manualRef.current = value; setManual(value); });
   }

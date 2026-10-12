@@ -2,7 +2,7 @@ export type Provider = 'modrinth' | 'curseforge';
 export type ContentType = 'mod' | 'modpack' | 'resourcepack' | 'shader';
 export type Project = { id: string; provider: Provider; slug: string; title: string; author: string; description: string; icon?: string; image?: string; downloads: number; categories: string[]; updated: string; type: ContentType; url: string; body?: string; gallery?: {url:string; title:string}[]; gameVersions?:string[]; loaders?:string[] };
 export type Dependency = { projectId?: string; versionId?: string; type: 'required' | 'incompatible' | 'optional' };
-export type CatalogFile = { name: string; url?: string; mirrors?:string[]; size: number; hash?: { algorithm: 'SHA-1' | 'SHA-512'; value: string }; manualUrl?: string };
+export type CatalogFile = { name: string; url?: string; mirrors?:string[]; size: number; hash?: { algorithm: 'SHA-1' | 'SHA-512'; value: string }; manualUrl?: string; provider?:Provider; projectId?:string; releaseId?:string };
 export type Release = { id: string; projectId: string; provider: Provider; title: string; version: string; gameVersions: string[]; loaders: string[]; date: string; files: CatalogFile[]; dependencies: Dependency[] };
 export type Search = { provider: Provider; type: ContentType; query: string; sort: 'downloads' | 'relevance' | 'updated'; version?: string; loader?: string; offset?: number; categories?:string[]; environment?:'client_only'|'client_and_server'|'server_only'|''; openSource?:boolean };
 export type Category={id:string;name:string};
@@ -14,16 +14,16 @@ export function configureCatalog(server:boolean) { hosted=server; clearCatalogCa
 export function hostedCatalog() { return hosted; }
 
 export function curseKey() { return typeof sessionStorage === 'undefined' ? '' : sessionStorage.getItem('glide-curseforge-key') || ''; }
-async function api(provider: Provider, path: string, signal?: AbortSignal): Promise<any> {
+async function api(provider: Provider, path: string, signal?: AbortSignal, body?:unknown): Promise<any> {
   const key = provider === 'curseforge' ? curseKey() : '';
   if (provider === 'curseforge' && !key && !hosted) throw new Error('CurseForge requires the hosted launcher or a local API key.');
-  const cacheId = `${provider}:${path}`;
+  const cacheId = `${provider}:${path}${body?JSON.stringify(body):''}`;
   const cached = clientCache.get(cacheId);
   if (cached && cached.expires > Date.now()) return cached.value;
-  const response = await fetch(hosted ? `/api/catalog/${provider}${path}` : `${provider === 'modrinth' ? 'https://api.modrinth.com/v2' : 'https://api.curseforge.com/v1'}${path}`, { headers: !hosted && provider === 'curseforge' ? { 'x-api-key': key } : {}, credentials: 'omit', signal: signal ? AbortSignal.any([signal,AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000) });
+  const response = await fetch(hosted ? `/api/catalog/${provider}${path}` : `${provider === 'modrinth' ? 'https://api.modrinth.com/v2' : 'https://api.curseforge.com/v1'}${path}`, { ...(body?{method:'POST',body:JSON.stringify(body)}:{}), headers: { ...(body?{'Content-Type':'application/json'}:{}), ...(!hosted && provider === 'curseforge' ? { 'x-api-key': key } : {}) }, credentials: 'omit', signal: signal ? AbortSignal.any([signal,AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000) });
   if (!response.ok) throw new Error(response.status === 429 ? 'The catalog is busy. Wait a minute and retry.' : `${provider === 'curseforge' ? 'CurseForge' : 'Modrinth'} returned ${response.status}${response.status === 401 || response.status === 403 ? '. Check your API key or the author’s distribution restrictions.' : '.'}`);
   const value = await response.json();
-  if (clientCache.size > 300) clientCache.clear();
+  if (clientCache.size > 1024) clientCache.delete(clientCache.keys().next().value!);
   clientCache.set(cacheId, { value, expires: Date.now() + 120000 });
   return value;
 }
@@ -96,10 +96,16 @@ export async function getRelease(provider: Provider, versionId: string, projectI
   if (!projectId) throw new Error('Missing CurseForge project ID');
   return cfRelease((await api(provider, `/mods/${projectId}/files/${versionId}`)).data);
 }
+export async function primeCurseFiles(ids:number[],signal:AbortSignal){
+ const result=await api('curseforge','/mods/files',signal,{fileIds:ids});
+ for(const file of result.data)clientCache.set(`curseforge:/mods/${file.modId}/files/${file.id}`,{value:{data:file},expires:Date.now()+1800000});
+}
 export async function downloadable(release: Release): Promise<CatalogFile> {
   if (!release.files[0]) throw new Error('This release has no downloadable file');
   const file = { ...release.files[0] };
   if (release.provider === 'curseforge') {
+    file.provider='curseforge';file.projectId=release.projectId;file.releaseId=release.id;
+    if(file.url)return file;
     const project = await getProject('curseforge', release.projectId);
     file.manualUrl = `${project.url}/files/${release.id}`;
     if (!file.url) try { file.url = (await api('curseforge', `/mods/${release.projectId}/files/${release.id}/download-url`)).data || undefined; } catch { /* Author restrictions require a manual download, never a fabricated CDN URL. */ }

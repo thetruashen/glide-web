@@ -109,6 +109,15 @@ def catalog(provider, route):
     result=requests.get(base+route,params=params,headers=headers,timeout=(10,30))
     return Response(result.content,status=result.status_code,content_type='application/json')
 
+@app.post('/api/catalog/curseforge/mods/files')
+def bulk_files():
+    body=request.get_json(silent=True) or {};ids=body.get('fileIds')
+    if not isinstance(ids,list) or not 1<=len(ids)<=1000 or any(type(value)!=int or value<=0 for value in ids):return jsonify(error='Invalid file list'),400
+    key=os.environ.get('CURSEFORGE_API_KEY')
+    if not key:return jsonify(error='CurseForge is not configured'),503
+    result=requests.post('https://api.curseforge.com/v1/mods/files',json={'fileIds':ids},headers={'x-api-key':key},timeout=(10,30))
+    return Response(result.content,status=result.status_code,content_type='application/json')
+
 def safe_url(value):
     parsed=urlsplit(value)
     if parsed.scheme!='https' or parsed.hostname not in HOSTS or parsed.username or parsed.password or parsed.port not in (None,443):
