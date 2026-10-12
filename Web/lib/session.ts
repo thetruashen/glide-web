@@ -1,3 +1,4 @@
+import {MAX_PROFILE_BYTES} from './limits';
 import type {ReportProgress} from './progress';
 import type { Profile } from './storage';
 export type Session = { id: string; profileId: string; repo: string; privateKey: JsonWebKey; runId?: number; url?: string; secret?: string; created: number; uploaded?: boolean; workflow?: string };
@@ -79,7 +80,7 @@ export async function launchDownloadHelper(repo: string, token: string): Promise
   persistSession(session); return session;
 }
 export async function uploadProfile(session: Session, blob: Blob, report?:ReportProgress) {
-  if (blob.size > 512 * 1048576) throw new Error('Profile exceeds the 512 MB transfer limit.');
+  if (blob.size > MAX_PROFILE_BYTES) throw new Error('Profile exceeds the 2 GiB transfer limit.');
   const id = crypto.randomUUID(), size = 8 * 1048576;
   const count = Math.ceil(blob.size / size);
   const started=Date.now();

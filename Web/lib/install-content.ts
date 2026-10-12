@@ -1,11 +1,12 @@
 import JSZip from 'jszip';
+import {MAX_FILE_BYTES,MAX_PROFILE_BYTES,MAX_EXPANDED_BYTES} from './limits';
 import {readDownload,type ReportProgress} from './progress';
 import { downloadable, hostedCatalog, getProject, getRelease, releases, type CatalogFile, type ContentType, type Project, type Release } from './catalog-api';
 import type { Mod, Profile } from './storage';
 import { safePath } from './profile-paths';
 export { safePath } from './profile-paths';
 
-const MAX_FILES = 10000, MAX_DOWNLOAD = 512 * 1048576, MAX_EXPANDED = 1024 * 1048576;
+const MAX_FILES = 10000, MAX_DOWNLOAD = MAX_FILE_BYTES, MAX_EXPANDED = MAX_EXPANDED_BYTES;
 export function packSettings(dependencies: Record<string, string>): { version: string; loader: string; loaderVersion?: string } {
   const version = dependencies.minecraft;
   if (typeof version !== 'string' || !/^[\w.+-]{1,80}$/.test(version)) throw new Error('The modpack does not declare a valid Minecraft version.');
@@ -51,7 +52,7 @@ export function fileFetcher(signal: AbortSignal, supplied: RequestFile, relay?: 
   return async file => {
     signal.throwIfAborted();
     report?.({title:'Resolving file',detail:file.name});
-    if(file.size>MAX_DOWNLOAD)throw new Error(`${file.name}: File exceeds the 512 MiB download limit`);
+    if(file.size>MAX_DOWNLOAD)throw new Error(`${file.name}: File exceeds the 1 GiB download limit`);
     if (!file.url) return verified(await supplied(file), file);
     if(hostedCatalog() && relay && new URL(file.url).hostname.endsWith('.forgecdn.net')) {
       try {const blob=await relay(file);report?.({title:'Verifying checksum',detail:file.name,percent:100});return await verified(blob,file);}catch(e){signal.throwIfAborted();throw new Error(e instanceof Error && e.message.startsWith(file.name)?e.message:`${file.name}: ${e instanceof Error?e.message:String(e)}`);}
@@ -126,7 +127,7 @@ export async function installMod(release: Release, profile: Profile, existing: M
     next.push(mod);
   }
   signal.throwIfAborted();
-  if (next.reduce((size, m) => size + m.blob.size, 0) > MAX_DOWNLOAD) throw new Error('Installed mods exceed the 512 MiB transfer limit.');
+  if (next.reduce((size, m) => size + m.blob.size, 0) > MAX_PROFILE_BYTES) throw new Error('Installed mods exceed the 2 GiB transfer limit.');
   return next;
 }
 export type PackInstall = { settings: ReturnType<typeof packSettings>; mods: Mod[]; backup: Blob; name: string };
@@ -148,7 +149,7 @@ export async function installPack(archive: Blob, provider: 'modrinth' | 'cursefo
     path = safePath(path);
     if (output.file(path) && !override) throw new Error(`Duplicate pack file: ${path}`);
     total += blob.size;
-    if (total > MAX_EXPANDED) throw new Error('Expanded modpack exceeds 1 GiB.');
+    if (total > MAX_EXPANDED) throw new Error('Expanded modpack exceeds 4 GiB.');
     output.file(path, blob.arrayBuffer());
     if (path.startsWith('mods/') && path.endsWith('.jar')) {
       const name = path.slice(5);
@@ -211,6 +212,10 @@ export async function installPack(archive: Blob, provider: 'modrinth' | 'cursefo
     if (entry.dir || !entry.name.startsWith(folder)) continue;
     const path = entry.name.slice(folder.length);
     if (/^(README|LICENSE|CHANGELOG)(\.[\w]+)?$/i.test(path)) continue;
+    // Pack authors include read-me/server instructions alongside overrides.
+    // They are documentation, not Minecraft settings; never install them into
+    // shared game caches. Full archive traversal validation already ran above.
+    if(!path.includes('/') && !['options.txt','optionsof.txt','servers.dat'].includes(path.toLowerCase()) && /\.(txt|md|pdf)$/i.test(path))continue;
     // JSZip tracks the original name even when it normalizes a malicious path.
     const original = (entry as typeof entry & { unsafeOriginalName?: string }).unsafeOriginalName || entry.name;
     if (original.split('/').includes('..') || original.includes('\\')) throw new Error('Unsafe modpack override path.');
@@ -219,7 +224,7 @@ export async function installPack(archive: Blob, provider: 'modrinth' | 'cursefo
   }
   progress('Preparing local instance…');
   const backup = await output.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 1 } },meta=>report?.({title:'Preparing local instance',detail:meta.currentFile || 'Compressing instance files',percent:meta.percent}));
-  if (backup.size > MAX_DOWNLOAD) throw new Error('This modpack exceeds the 512 MiB session transfer limit.');
+  if (backup.size > MAX_PROFILE_BYTES) throw new Error('This modpack exceeds the 2 GiB session transfer limit.');
   signal.throwIfAborted();
   return { settings, mods, backup, name };
 }
@@ -228,6 +233,6 @@ export async function installAsset(file: CatalogFile, type: ContentType, existin
   const name = safePath(`${type === 'shader' ? 'shaderpacks' : 'resourcepacks'}/${file.name}`);
   zip.file(name, await (await fetchFile(file)).arrayBuffer());
   const result = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 1 } });
-  if (result.size > MAX_DOWNLOAD) throw new Error('Profile exceeds the session transfer limit.');
+  if (result.size > MAX_PROFILE_BYTES) throw new Error('Profile exceeds the session transfer limit.');
   return result;
 }

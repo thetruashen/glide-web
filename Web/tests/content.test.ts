@@ -94,3 +94,10 @@ test('restricted CF URLs are never invented; only an author-published identical 
     assert.equal(file.manualUrl,'https://www.curseforge.com/minecraft/mc-mods/test/files/456');
   }finally {globalThis.fetch=original;if(storageDescriptor)Object.defineProperty(globalThis,'sessionStorage',storageDescriptor);else Reflect.deleteProperty(globalThis,'sessionStorage');clearCatalogCache();}
 });
+
+test('pack documentation at override root is skipped while actual options are preserved',async()=>{
+ const manifest={manifestType:'minecraftModpack',manifestVersion:1,name:'Docs pack',minecraft:{version:'1.21.1',modLoaders:[{id:'neoforge-21.1.258',primary:true}]},files:[],overrides:'overrides'};
+ const archive=await zipBlob({'manifest.json':JSON.stringify(manifest),'overrides/FOR SERVERS ONLY - SET THESE IN SERVER.PROPERTIES.txt':'Instructions','overrides/options.txt':'music:0'});
+ const result=await installPack(archive,'curseforge',async()=>{throw new Error('No downloads expected');},()=>{},signal());
+ const files=await JSZip.loadAsync(await result.backup.arrayBuffer());assert.equal(await files.file('options.txt')!.async('string'),'music:0');assert.equal(files.file('FOR SERVERS ONLY - SET THESE IN SERVER.PROPERTIES.txt'),null);
+});

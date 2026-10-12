@@ -18,7 +18,7 @@ app.config.update(SECRET_KEY=os.environ.get('GLIDE_SESSION_SECRET'), SESSION_COO
     PERMANENT_SESSION_LIFETIME=timedelta(days=30), MAX_CONTENT_LENGTH=65536)
 REPO = os.environ.get('GLIDE_REPO', 'thetruashen/glide-web')
 BRANCH = os.environ.get('GLIDE_BRANCH', 'main')
-MAX_FILE = 512 * 1048576
+MAX_FILE = 1024 * 1048576
 HOSTS = {'cdn.modrinth.com','edge.forgecdn.net','mediafilez.forgecdn.net','media.forgecdn.net',
          'github.com','raw.githubusercontent.com','gitlab.com','release-assets.githubusercontent.com','objects.githubusercontent.com'}
 
@@ -129,7 +129,7 @@ def download():
     body=request.get_json(silent=True) or {}
     try:
         size=int(body.get('size',0))
-        if not 0<=size<=MAX_FILE: raise ValueError('This file exceeds the 512 MiB download limit')
+        if not 0<=size<=MAX_FILE: raise ValueError('This file exceeds the 1 GiB download limit')
         url=body.get('url','')
         if not isinstance(url,str) or not url or len(url)>4096: raise ValueError('The provider did not supply a valid file URL')
         upstream=open_file(url)
@@ -141,7 +141,7 @@ def download():
         length_header=upstream.headers.get('Content-Length','')
         length=int(length_header) if str(length_header).isdigit() else 0
         if length>MAX_FILE:
-            upstream.close();raise ValueError('This file exceeds the 512 MiB download limit')
+            upstream.close();raise ValueError('This file exceeds the 1 GiB download limit')
         if upstream.status_code==206:
             upstream.close();raise ValueError('The CDN returned only part of the file. Retry the download.')
     except (ValueError,TypeError) as error:

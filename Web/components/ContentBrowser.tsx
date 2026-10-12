@@ -91,6 +91,7 @@ export default function ContentBrowser({ profile, type, locked, initialProject, 
   useEffect(()=>{let active=true;const release=versions.find(v=>v.id===versionId);setChanges('Loading changelog…');if(release)changelog(release).then(text=>{if(active)setChanges(text);}).catch(e=>{if(active)setChanges(String(e));});return()=>{active=false;};},[versions,versionId]);
   function cancelInstall() { controller.current?.abort(); manualRef.current?.reject(new Error('Installation cancelled')); setManual(undefined); manualRef.current = undefined; }
   function requestManual(file: CatalogFile): Promise<Blob> {
+    setInstallProgress(current=>({...current,title:'Waiting for author download',detail:file.name}));
     return new Promise((resolve, reject) => { const value = { file, resolve, reject }; manualRef.current = value; setManual(value); });
   }
   async function perform(release?: Release, archive?: File) {
@@ -105,8 +106,10 @@ export default function ContentBrowser({ profile, type, locked, initialProject, 
         return readDownload(response,file.name,file.size,abort.signal,setTransferProgress);
       } : helper ? file => helper.fetch(file,abort.signal) : undefined,setTransferProgress);
       if (type === 'modpack' || archive) {
+        setInstallProgress({title:archive?'Reading uploaded pack':'Downloading pack archive'});
         const packProvider = archive ? (archive.name.endsWith('.mrpack') ? 'modrinth' : 'curseforge') : release!.provider;
         const file = archive || await fetchFile(await downloadable(release!));
+        setInstallProgress({title:'Reading pack manifest'});setTransferProgress(undefined);
         const result = await installPack(file, packProvider, fetchFile, setProgress, abort.signal,report);
         const next: Profile = { ...profile, id: crypto.randomUUID(), name: result.name, ...result.settings, memory: Math.max(profile.memory, 6), pack: { provider: packProvider, projectId: release?.projectId || 'local-import', versionId: release?.id || 'local-import', title: result.name, icon: selected?.icon } };
         setInstallProgress({title:'Saving to this browser'});setTransferProgress(undefined);abort.signal.throwIfAborted(); await commitInstallation(next, result.mods, result.backup);
@@ -121,7 +124,7 @@ export default function ContentBrowser({ profile, type, locked, initialProject, 
         await onInstalled(profile, `${label[type]} installed in this browser.`);
       }
       installed.current = true;setCompleted(true);setInstallProgress({title:'Installation complete',detail:'Your instance is saved in this browser.',percent:100});setTransferProgress(undefined); setSelected(undefined);
-    } catch (e) {setTransferProgress(undefined);setInstallProgress({title:abort.signal.aborted?'Installation cancelled':'Installation failed',detail:progress});setCompleted(true); setError(abort.signal.aborted ? 'Installation cancelled. Your existing files are unchanged.' : String(e)); }
+    } catch (e) {setTransferProgress(undefined);setInstallProgress({title:abort.signal.aborted?'Installation cancelled':'Installation failed',detail:progress,stopped:true});setCompleted(true); setError(abort.signal.aborted ? 'Installation cancelled. Your existing files are unchanged.' : String(e)); }
     finally { await helper?.close(); setInstalling(false); onWorking(false); setManual(undefined); manualRef.current = undefined; controller.current = undefined; }
   }
   async function loadOlder() {if(!selected||olderBusy)return;setOlderBusy(true);try{const page=await releasePage(selected,undefined,undefined,olderOffset);setVersions(current=>[...current,...page.items.filter(v=>!current.some(c=>c.id===v.id))]);setOlderOffset(olderOffset+50);setMoreVersions(olderOffset+50<page.total);}catch(e){setError(String(e));}finally{setOlderBusy(false);}}

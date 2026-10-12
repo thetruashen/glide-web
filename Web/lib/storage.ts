@@ -1,3 +1,4 @@
+import {MAX_PROFILE_BYTES,MAX_EXPANDED_BYTES} from './limits';
 import { openDB } from 'idb';
 import JSZip from 'jszip';
 import { safePath } from './profile-paths';
@@ -50,8 +51,8 @@ export async function packProfile(id: string, exportSettings=false, progress?:(p
 }
 export async function importProfile(id: string, blob: Blob) {
   const zip = await JSZip.loadAsync(blob);
-  if(blob.size>512*1048576 || Object.keys(zip.files).length>10000)throw new Error('Backup exceeds the import limit.');
-  if(Object.values(zip.files).reduce((n,e)=>n+((e as typeof e & {_data?:{uncompressedSize?:number}})._data?.uncompressedSize||0),0)>1024*1048576)throw new Error('Expanded backup exceeds 1 GiB.');
+  if(blob.size>MAX_PROFILE_BYTES || Object.keys(zip.files).length>10000)throw new Error('Backup exceeds the import limit.');
+  if(Object.values(zip.files).reduce((n,e)=>n+((e as typeof e & {_data?:{uncompressedSize?:number}})._data?.uncompressedSize||0),0)>MAX_EXPANDED_BYTES)throw new Error('Expanded backup exceeds 4 GiB.');
   let profile:Profile=await (await db()).get('profiles',id);
   if(!profile)throw new Error('Instance no longer exists.');
   let metadata:Partial<Mod>[]=[];

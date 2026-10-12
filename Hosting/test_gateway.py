@@ -34,6 +34,12 @@ class GatewayTests(unittest.TestCase):
  def test_download_rejection_reports_specific_reason(self):
   r=self.client.post('/api/download',json={'url':'https://example.com/secret','size':1},headers=self.origin)
   self.assertEqual(r.status_code,400);self.assertEqual(r.json['error'],'Unsupported download host')
-  r=self.client.post('/api/download',json={'url':'https://cdn.modrinth.com/a','size':1024*1048576},headers=self.origin)
-  self.assertIn('512 MiB',r.json['error'])
+  r=self.client.post('/api/download',json={'url':'https://cdn.modrinth.com/a','size':2048*1048576},headers=self.origin)
+  self.assertIn('1 GiB',r.json['error'])
+ def test_chocolate_archive_size_is_accepted_without_buffering_it(self):
+  upstream=Mock(ok=True,status_code=200,headers={'Content-Length':'884252114'})
+  upstream.iter_content.return_value=[b'PK']
+  with patch('app.open_file',return_value=upstream):
+   r=self.client.post('/api/download',json={'url':'https://edge.forgecdn.net/files/chocolate.zip','size':884252114},headers=self.origin,buffered=False)
+   self.assertEqual(r.status_code,200);self.assertEqual(r.headers['X-File-Size'],'884252114');r.close()
 if __name__=='__main__':unittest.main()

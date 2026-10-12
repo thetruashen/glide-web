@@ -75,6 +75,8 @@ class ProfileTests(unittest.TestCase):
                     upload_id = '12345678-1234-1234-1234-123456789abc'
                     with request(f'upload/{upload_id}/0', data) as response:
                         self.assertEqual(response.headers['Access-Control-Allow-Origin'], 'https://example.com')
+                    request(f'upload/{upload_id}/100', b'large-instance-chunk').close()
+                    self.assertTrue((runtime / ('upload-' + upload_id) / '100').exists())
                     request(f'import/{upload_id}/1', b'{}').close()
                     request('start', b'{}').close()
                     with self.assertRaises(HTTPError) as blocked:
