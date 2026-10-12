@@ -39,14 +39,14 @@ export async function storeBackup(id: string, blob: Blob) {
   await tx.store.put(blob, `${id}:backup`);
   await tx.done;
 }
-export async function packProfile(id: string, exportSettings=false): Promise<Blob> {
+export async function packProfile(id: string, exportSettings=false, progress?:(percent:number)=>void): Promise<Blob> {
   const backup = await getBackup(id);
   const zip = backup ? await JSZip.loadAsync(backup) : new JSZip();
   zip.remove('glide-profile.json');
   if(exportSettings){const profile=await (await db()).get('profiles',id);if(profile)zip.file('glide-profile.json',JSON.stringify({format:1,profile,mods:(await getMods(id)).map(({blob,...meta})=>meta)}));}
   Object.keys(zip.files).filter(name => name.startsWith('mods/')).forEach(name => zip.remove(name));
   for (const mod of await getMods(id)) zip.file(`mods/${mod.name}`, await mod.blob.arrayBuffer());
-  return zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 1 } });
+  return zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 1 } },meta=>progress?.(meta.percent));
 }
 export async function importProfile(id: string, blob: Blob) {
   const zip = await JSZip.loadAsync(blob);

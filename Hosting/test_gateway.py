@@ -25,4 +25,15 @@ class GatewayTests(unittest.TestCase):
    with self.assertRaises(ValueError):safe_url(u)
   self.assertEqual(self.client.get('/api/catalog/curseforge/users').status_code,400)
   self.assertEqual(self.client.post('/api/download',json={'url':'https://127.0.0.1/a'},headers=self.origin).status_code,400)
+ def test_cdn_size_header_is_not_mistaken_for_verified_file_length(self):
+  upstream=Mock(ok=True,status_code=200,headers={'Content-Length':'2'})
+  upstream.iter_content.return_value=[b'abcd']
+  with patch('app.open_file',return_value=upstream):
+   r=self.client.post('/api/download',json={'url':'https://edge.forgecdn.net/files/a.zip','size':4},headers=self.origin)
+   self.assertEqual(r.status_code,200);self.assertEqual(r.data,b'abcd');self.assertEqual(r.headers['X-File-Size'],'4')
+ def test_download_rejection_reports_specific_reason(self):
+  r=self.client.post('/api/download',json={'url':'https://example.com/secret','size':1},headers=self.origin)
+  self.assertEqual(r.status_code,400);self.assertEqual(r.json['error'],'Unsupported download host')
+  r=self.client.post('/api/download',json={'url':'https://cdn.modrinth.com/a','size':1024*1048576},headers=self.origin)
+  self.assertIn('512 MiB',r.json['error'])
 if __name__=='__main__':unittest.main()

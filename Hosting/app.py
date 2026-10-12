@@ -117,7 +117,7 @@ def safe_url(value):
 def open_file(url):
     for _ in range(6):
         safe_url(url)
-        result=requests.get(url,stream=True,allow_redirects=False,timeout=(15,120),headers={'User-Agent':'GlideWeb/2'})
+        result=requests.get(url,stream=True,allow_redirects=False,timeout=(15,120),headers={'User-Agent':'GlideWeb/2','Accept-Encoding':'identity'})
         if result.is_redirect:
             next_url=urljoin(url,result.headers.get('Location',''));result.close();url=next_url;continue
         return result
@@ -129,17 +129,23 @@ def download():
     body=request.get_json(silent=True) or {}
     try:
         size=int(body.get('size',0))
-        if not 0<=size<=MAX_FILE: raise ValueError('File exceeds the 512 MiB limit')
+        if not 0<=size<=MAX_FILE: raise ValueError('This file exceeds the 512 MiB download limit')
         url=body.get('url','')
-        if not isinstance(url,str) or len(url)>4096: raise ValueError('Invalid URL')
+        if not isinstance(url,str) or not url or len(url)>4096: raise ValueError('The provider did not supply a valid file URL')
         upstream=open_file(url)
         if not upstream.ok:
             status=upstream.status_code;upstream.close()
             return jsonify(error=f'The official download returned {status}.'),502
-        length=int(upstream.headers.get('Content-Length',0))
-        if length>MAX_FILE or (size and length and length!=size):
-            upstream.close();raise ValueError('File size mismatch or download limit exceeded')
-    except (ValueError,TypeError): return jsonify(error='Invalid file URL, size, or redirect'),400
+        # CDN/proxy Content-Length may describe encoded bytes or be missing.
+        # Enforce the actual streamed length; the browser also verifies the hash.
+        length_header=upstream.headers.get('Content-Length','')
+        length=int(length_header) if str(length_header).isdigit() else 0
+        if length>MAX_FILE:
+            upstream.close();raise ValueError('This file exceeds the 512 MiB download limit')
+        if upstream.status_code==206:
+            upstream.close();raise ValueError('The CDN returned only part of the file. Retry the download.')
+    except (ValueError,TypeError) as error:
+        return jsonify(error=str(error) or 'Invalid download request'),400
     def chunks():
         total=0
         try:
@@ -149,7 +155,9 @@ def download():
                 yield chunk
             if size and total!=size: raise ValueError('Incomplete download')
         finally: upstream.close()
-    return Response(stream_with_context(chunks()),content_type='application/octet-stream')
+    response=Response(stream_with_context(chunks()),content_type='application/octet-stream')
+    if size:response.headers['X-File-Size']=str(size)
+    return response
 
 def gh(path,method='GET',body=None):
     return requests.request(method,f'https://api.github.com/repos/{REPO}'+('/'+path if path else ''),

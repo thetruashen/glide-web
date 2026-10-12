@@ -1,4 +1,5 @@
 import JSZip from 'jszip';
+import {readDownload,type ReportProgress} from './progress';
 import { downloadable, hostedCatalog, getProject, getRelease, releases, type CatalogFile, type ContentType, type Project, type Release } from './catalog-api';
 import type { Mod, Profile } from './storage';
 import { safePath } from './profile-paths';
@@ -46,18 +47,23 @@ export class ManualDownloadRequired extends Error {
 }
 type Progress = (message: string) => void;
 export type RequestFile = (file: CatalogFile) => Promise<Blob>;
-export function fileFetcher(signal: AbortSignal, supplied: RequestFile, relay?: RequestFile): RequestFile {
+export function fileFetcher(signal: AbortSignal, supplied: RequestFile, relay?: RequestFile, report?:ReportProgress): RequestFile {
   return async file => {
     signal.throwIfAborted();
+    report?.({title:'Resolving file',detail:file.name});
+    if(file.size>MAX_DOWNLOAD)throw new Error(`${file.name}: File exceeds the 512 MiB download limit`);
     if (!file.url) return verified(await supplied(file), file);
+    if(hostedCatalog() && relay && new URL(file.url).hostname.endsWith('.forgecdn.net')) {
+      try {const blob=await relay(file);report?.({title:'Verifying checksum',detail:file.name,percent:100});return await verified(blob,file);}catch(e){signal.throwIfAborted();throw new Error(e instanceof Error && e.message.startsWith(file.name)?e.message:`${file.name}: ${e instanceof Error?e.message:String(e)}`);}
+    }
     try {
-      if(hostedCatalog() && relay && new URL(file.url).hostname.endsWith('forgecdn.net')) return await verified(await relay(file),file);
       const response = await fetch(trustedDownload(file.url), { credentials: 'omit', signal: AbortSignal.any([signal, AbortSignal.timeout(120000)]) });
       if (!response.ok) throw new Error(`Download returned ${response.status}`);
       trustedDownload(response.url);
       const length = Number(response.headers.get('content-length') || 0);
       if (length > MAX_DOWNLOAD) throw new Error('File exceeds the download limit');
-      const blob = await response.blob();
+      const blob = await readDownload(response,file.name,file.size,signal,report);
+      report?.({title:'Verifying checksum',detail:file.name,percent:100});
       return await verified(blob, file);
     } catch (error) {
       signal.throwIfAborted();
@@ -103,11 +109,11 @@ export async function requiredReleases(root: Release, profile: Pick<Profile, 've
   }
   return [...resolved.values()];
 }
-export async function installMod(release: Release, profile: Profile, existing: Mod[], fetchFile: RequestFile, progress: Progress, signal: AbortSignal): Promise<Mod[]> {
+export async function installMod(release: Release, profile: Profile, existing: Mod[], fetchFile: RequestFile, progress: Progress, signal: AbortSignal, report?:ReportProgress): Promise<Mod[]> {
   const planned = await requiredReleases(release, profile, signal);
   const incoming: Mod[] = [];
   for (const [index, mod] of planned.entries()) {
-    signal.throwIfAborted(); progress(`Downloading ${index + 1}/${planned.length}: ${mod.title}`);
+    signal.throwIfAborted(); progress(`Downloading ${index + 1}/${planned.length}: ${mod.title}`);report?.({title:'Installing mods',fileIndex:index+1,fileCount:planned.length,percent:index/planned.length*100});
     for (const dep of mod.dependencies.filter(d => d.type === 'incompatible')) if (existing.some(m => m.provider === mod.provider && m.projectId === dep.projectId)) throw new Error(`${mod.title} conflicts with an installed mod. Remove the conflicting mod first.`);
     const file = await downloadable(mod);
     if (!/^[^/\\:]+\.jar$/i.test(file.name)) throw new Error('The chosen mod does not contain a Java .jar file.');
@@ -124,7 +130,7 @@ export async function installMod(release: Release, profile: Profile, existing: M
   return next;
 }
 export type PackInstall = { settings: ReturnType<typeof packSettings>; mods: Mod[]; backup: Blob; name: string };
-export async function installPack(archive: Blob, provider: 'modrinth' | 'curseforge', fetchFile: RequestFile, progress: Progress, signal: AbortSignal): Promise<PackInstall> {
+export async function installPack(archive: Blob, provider: 'modrinth' | 'curseforge', fetchFile: RequestFile, progress: Progress, signal: AbortSignal, report?:ReportProgress): Promise<PackInstall> {
   const zip = await JSZip.loadAsync(await archive.arrayBuffer());
   if (Object.keys(zip.files).length > MAX_FILES) throw new Error('Modpack contains too many files.');
   for (const entry of Object.values(zip.files)) {
@@ -198,7 +204,7 @@ export async function installPack(archive: Blob, provider: 'modrinth' | 'cursefo
   // Sequential installation makes manual-file handoffs deterministic; nothing
   // is committed until every required download and override has passed validation.
   for (const [i, task] of tasks.entries()) {
-    signal.throwIfAborted(); progress(`Installing pack files ${i + 1}/${tasks.length}`); await task();
+    signal.throwIfAborted(); progress(`Installing pack files ${i + 1}/${tasks.length}`);report?.({title:'Installing pack files',fileIndex:i+1,fileCount:tasks.length,percent:i/tasks.length*100});await task();report?.({title:'Installing pack files',fileIndex:i+1,fileCount:tasks.length,percent:(i+1)/tasks.length*100});
   }
   for (const folder of overrideFolders) for (const entry of Object.values(zip.files)) {
     signal.throwIfAborted();
@@ -212,7 +218,7 @@ export async function installPack(archive: Blob, provider: 'modrinth' | 'cursefo
     put(path, new Blob([await entry.async('arraybuffer')]), {}, true);
   }
   progress('Preparing local instance…');
-  const backup = await output.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 1 } });
+  const backup = await output.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 1 } },meta=>report?.({title:'Preparing local instance',detail:meta.currentFile || 'Compressing instance files',percent:meta.percent}));
   if (backup.size > MAX_DOWNLOAD) throw new Error('This modpack exceeds the 512 MiB session transfer limit.');
   signal.throwIfAborted();
   return { settings, mods, backup, name };

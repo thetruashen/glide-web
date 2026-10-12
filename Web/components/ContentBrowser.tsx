@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from 'react';
 import {ArrowLeft,ArrowRight,SlidersHorizontal,Download,ExternalLink,Package,Search,Upload} from 'lucide-react';
 import ProjectText from './ProjectText';
+import ProgressPanel from './ProgressPanel';
+import {readDownload,type ProgressInfo} from '../lib/progress';
 import { categories as getCategories, type Category, changelog, clearCatalogCache, curseKey, downloadable, getDescription, getProject, hostedCatalog, releasePage, releases, searchProjects, type CatalogFile, type ContentType, type Project, type Provider, type Release } from '../lib/catalog-api';
 import { commitInstallation, getBackup, getMods, type Profile } from '../lib/storage';
 import { fileFetcher, installAsset, installMod, installPack } from '../lib/install-content';
@@ -41,6 +43,10 @@ export default function ContentBrowser({ profile, type, locked, initialProject, 
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [progress, setProgress] = useState('');
+  const [installProgress,setInstallProgress]=useState<ProgressInfo>({title:'Preparing installation'});
+  const [transferProgress,setTransferProgress]=useState<ProgressInfo>();
+  const [completed,setCompleted]=useState(false);
+  const lastRelease=useRef<Release | undefined>(undefined);
   const [manual, setManual] = useState<Manual>();
   const manualRef = useRef<Manual | undefined>(undefined);
   const controller = useRef<AbortController | undefined>(undefined);
@@ -89,35 +95,39 @@ export default function ContentBrowser({ profile, type, locked, initialProject, 
   }
   async function perform(release?: Release, archive?: File) {
     if (locked || installing || controller.current) return;
-    installed.current = false; setInstalling(true); onWorking(true); setError(''); setProgress('Resolving dependencies…');
+    installed.current = false;lastRelease.current=release;setCompleted(false);setInstallProgress({title:'Resolving dependencies'});setTransferProgress(undefined);setInstalling(true); onWorking(true); setError(''); setProgress('Resolving dependencies…');
     const abort = new AbortController(); controller.current = abort;
     const helper = actionsToken?.trim() && downloadRepo ? new DownloadHelper(downloadRepo, actionsToken.trim(), setProgress) : undefined;
     try {
-      const fetchFile = fileFetcher(abort.signal, requestManual, hostedCatalog() ? async file => { const r=await fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:file.url,size:file.size}),signal:abort.signal}); if(!r.ok)throw new Error(await r.text()); return r.blob(); } : helper ? file => helper.fetch(file,abort.signal) : undefined);
+      const report=(value:ProgressInfo)=>{setInstallProgress(value);if(value.fileIndex!==undefined)setTransferProgress(undefined);};
+      const fetchFile = fileFetcher(abort.signal, requestManual, hostedCatalog() ? async file => {
+        const response=await fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:file.url,size:file.size}),signal:abort.signal});
+        return readDownload(response,file.name,file.size,abort.signal,setTransferProgress);
+      } : helper ? file => helper.fetch(file,abort.signal) : undefined,setTransferProgress);
       if (type === 'modpack' || archive) {
         const packProvider = archive ? (archive.name.endsWith('.mrpack') ? 'modrinth' : 'curseforge') : release!.provider;
         const file = archive || await fetchFile(await downloadable(release!));
-        const result = await installPack(file, packProvider, fetchFile, setProgress, abort.signal);
+        const result = await installPack(file, packProvider, fetchFile, setProgress, abort.signal,report);
         const next: Profile = { ...profile, id: crypto.randomUUID(), name: result.name, ...result.settings, memory: Math.max(profile.memory, 6), pack: { provider: packProvider, projectId: release?.projectId || 'local-import', versionId: release?.id || 'local-import', title: result.name, icon: selected?.icon } };
-        abort.signal.throwIfAborted(); await commitInstallation(next, result.mods, result.backup);
+        setInstallProgress({title:'Saving to this browser'});setTransferProgress(undefined);abort.signal.throwIfAborted(); await commitInstallation(next, result.mods, result.backup);
         await onInstalled(next, `${result.name} installed as a new local instance (${result.mods.length} mods).`);
       } else if (release && type === 'mod') {
-        const mods = await installMod(release, profile, await getMods(profile.id), fetchFile, setProgress, abort.signal);
-        abort.signal.throwIfAborted(); await commitInstallation(profile, mods);
+        const mods = await installMod(release, profile, await getMods(profile.id), fetchFile, setProgress, abort.signal,report);
+        setInstallProgress({title:'Saving to this browser'});setTransferProgress(undefined);abort.signal.throwIfAborted(); await commitInstallation(profile, mods);
         await onInstalled(profile, 'Mod and required dependencies installed in this browser.');
       } else if (release) {
         const backup = await installAsset(await downloadable(release), type, await getBackup(profile.id), fetchFile);
-        abort.signal.throwIfAborted(); await commitInstallation(profile, await getMods(profile.id), backup);
+        setInstallProgress({title:'Saving to this browser'});setTransferProgress(undefined);abort.signal.throwIfAborted(); await commitInstallation(profile, await getMods(profile.id), backup);
         await onInstalled(profile, `${label[type]} installed in this browser.`);
       }
-      installed.current = true; setSelected(undefined);
-    } catch (e) { setError(abort.signal.aborted ? 'Installation cancelled. Your existing files are unchanged.' : String(e)); }
+      installed.current = true;setCompleted(true);setInstallProgress({title:'Installation complete',detail:'Your instance is saved in this browser.',percent:100});setTransferProgress(undefined); setSelected(undefined);
+    } catch (e) {setTransferProgress(undefined);setInstallProgress({title:abort.signal.aborted?'Installation cancelled':'Installation failed',detail:progress});setCompleted(true); setError(abort.signal.aborted ? 'Installation cancelled. Your existing files are unchanged.' : String(e)); }
     finally { await helper?.close(); setInstalling(false); onWorking(false); setManual(undefined); manualRef.current = undefined; controller.current = undefined; }
   }
   async function loadOlder() {if(!selected||olderBusy)return;setOlderBusy(true);try{const page=await releasePage(selected,undefined,undefined,olderOffset);setVersions(current=>[...current,...page.items.filter(v=>!current.some(c=>c.id===v.id))]);setOlderOffset(olderOffset+50);setMoreVersions(olderOffset+50<page.total);}catch(e){setError(String(e));}finally{setOlderBusy(false);}}
   const chosen=versions.find(v=>v.id===versionId);
   const canInstall=(v:Release)=>type==='modpack'||(v.gameVersions.includes(profile.version)&&(type!=='mod'||v.loaders.includes(profile.loader)));
-  const feedback=<>{error&&<div className="notice error" role="alert">{error}<button onClick={()=>{setError('');setRetry(retry+1);}}>Retry</button></div>}{installing&&<div className="install-progress" role="status"><span className="spinner"/>{progress}<button onClick={cancelInstall}>Cancel</button></div>}{manual&&<div className="manual-download"><strong>Author download required: {manual.file.name}</strong><p>The author has not made this file available through the API. Choose the official file to continue; its checksum is verified.</p><a href={manual.file.manualUrl||manual.file.url||selected?.url} target="_blank" rel="noreferrer">Official download page <ExternalLink size={16}/></a><label className="button-link"><Upload size={16}/> Choose file<input type="file" onChange={e=>{const file=e.target.files?.[0];if(file){manual.resolve(file);manualRef.current=undefined;setManual(undefined);}e.target.value='';}}/></label></div>}</>;
+  const feedback=<>{error&&<div className="notice error" role="alert">{error}<button onClick={()=>{setError('');if(lastRelease.current)void perform(lastRelease.current);else setRetry(retry+1);}}>Retry</button></div>}{(installing||completed)&&<><ProgressPanel value={{...installProgress,detail:installProgress.detail || (installing?progress:undefined)}}>{installing?<button onClick={cancelInstall}>Cancel</button>:<button onClick={()=>setCompleted(false)}>Dismiss</button>}</ProgressPanel>{transferProgress&&<ProgressPanel value={transferProgress}/>}</>}{manual&&<div className="manual-download"><strong>Author download required: {manual.file.name}</strong><p>The author has not made this file available through the API. Choose the official file to continue; its checksum is verified.</p><a href={manual.file.manualUrl||manual.file.url||selected?.url} target="_blank" rel="noreferrer">Official download page <ExternalLink size={16}/></a><label className="button-link"><Upload size={16}/> Choose file<input type="file" onChange={e=>{const file=e.target.files?.[0];if(file){manual.resolve(file);manualRef.current=undefined;setManual(undefined);}e.target.value='';}}/></label></div>}</>;
   if(selected)return <section className="project-page" id="content-catalog">
     <button className="back-link" disabled={installing} onClick={()=>{++detailRequest.current;setSelected(undefined);setError('');}}><ArrowLeft size={18}/> Back to {label[type].toLowerCase()}</button>
     <div className="project-header"><div className="project-icon">{selected.icon?<img src={selected.icon} alt=""/>:<Package/>}</div><div className="project-heading"><span className="eyebrow">{selected.provider} · {label[type]}</span><h1>{selected.title}</h1><p>{selected.description}</p><div className="project-meta"><span>By {selected.author||'the project team'}</span><span><Download size={16}/>{count(selected.downloads)}</span></div></div><button className="primary" disabled={detailsLoading||!chosen||!canInstall(chosen)||locked||installing} onClick={()=>void perform(chosen)}><Download size={18}/>{installing?'Installing…':'Install'}</button></div>

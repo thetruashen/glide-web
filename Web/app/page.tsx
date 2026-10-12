@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { download, getBackup, getMods, importProfile, newProfile, packProfile, profiles, removeProfile, saveMods, saveProfile, storeBackup, type Mod, type Profile } from '../lib/storage';
+import ProgressPanel from '../components/ProgressPanel';
+import type {ProgressInfo} from '../lib/progress';
 import MicrosoftAccount from '../components/MicrosoftAccount';
 import {readyAccount} from '../lib/microsoft';
 import AnimatedBanner from '../components/AnimatedBanner';
@@ -33,6 +35,7 @@ export default function Home() {
   const [message, setMessage] = useState('Your worlds stay with you.');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [launchProgress,setLaunchProgress]=useState<ProgressInfo>({title:'Waiting to launch'});
   const [lastSave, setLastSave] = useState<number>();
   const [storage, setStorage] = useState('');
   const [showConnection, setShowConnection] = useState(false);
@@ -89,7 +92,7 @@ export default function Home() {
       try {
         let s = session;
         if (!s.url) {
-          s = await connect(s, token);
+          s = await connect(s, token,setLaunchProgress);
           if (stopped) return;
           setSession(s);
           if (!s.url) { setMessage(`Preparing your runner · ${Math.round((Date.now() - s.created) / 1000)}s`); return; }
@@ -101,15 +104,18 @@ export default function Home() {
           setMessage('Sending your local profile directly to the runner…');
           const instance=items.find(p=>p.id===s.profileId);
           if(instance?.auth==='microsoft'){const account=readyAccount();await runner(s,'account',JSON.stringify({name:account.name,id:account.id,accessToken:account.accessToken,expires:account.expires}));}
-          await uploadProfile(s, await packProfile(s.profileId));
+          setLaunchProgress({title:'Preparing your local instance'});
+          const archive=await packProfile(s.profileId,false,percent=>setLaunchProgress({title:'Preparing your local instance',percent}));
+          await uploadProfile(s,archive,setLaunchProgress);
           await runner(s, 'start', '{}');
-          s = { ...s, uploaded: true }; persistSession(s); setSession(s);
+          setLaunchProgress({title:'Starting Minecraft'});s = { ...s, uploaded: true }; persistSession(s); setSession(s);
         } else if (current.finished) {
           await checkpoint(s);
           if (s.runId) await github(s.repo, `actions/runs/${s.runId}/cancel`, token, {}, 'POST');
           sessionStorage.removeItem('glide-session'); setSession(undefined); setStatus(undefined);
           setMessage(current.error || 'Session finished. Your final save is in this browser.');
         } else {
+          setLaunchProgress({title:current.stage==='minecraft-running'?'Minecraft is running':current.stage==='microsoft-login'?'Waiting for Microsoft sign-in':`Starting Minecraft · ${current.stage.replaceAll('-', ' ')}`,percent:current.stage==='minecraft-running'?100:undefined});
           setMessage(current.stage === 'minecraft-running' ? 'Connected. Your world is ready.' : `Preparing game · ${current.stage.replaceAll('-', ' ')}`);
           if (current.stage === 'minecraft-running' && Date.now() - snapshotTime.current > 60000) await checkpoint(s);
         }
@@ -167,7 +173,7 @@ export default function Home() {
       if (incompatible) throw new Error(`${incompatible.name} targets a different Minecraft version or loader. Update or remove it before launching.`);
       sessionStorage.setItem('glide-token', token.trim());
       await navigator.storage?.persist();
-      setMessage('Starting a private runner…');
+      setLaunchProgress({title:'Requesting a private runner'});setMessage('Starting a private runner…');
       setSession(await launch(profileToLaunch, repo.trim(), token.trim()));
       snapshotTime.current = Date.now();
     } catch (e) { setError(String(e));if(profileToLaunch.auth==='microsoft')setView('account'); } finally { setBusy(false); }
@@ -198,7 +204,7 @@ export default function Home() {
         await checkpoint(session);
       }
       let s = session;
-      if (!s.runId) { s = await connect(s, token); setSession(s); }
+      if (!s.runId) { s = await connect(s, token,setLaunchProgress); setSession(s); }
       if (!s.runId) throw new Error('Runner is still being queued. Try again shortly.');
       await github(s.repo, `actions/runs/${s.runId}/cancel`, token, {}, 'POST');
       sessionStorage.removeItem('glide-session'); setSession(undefined); setStatus(undefined);
@@ -265,7 +271,7 @@ export default function Home() {
     <main>
       {view!=='home' && <header><div><span className="breadcrumb">YOUR SPACE</span><span className="divider">/</span> {view==='instances'?'My instances':view==='settings'?'Settings':view==='account'?'Account':view==='modpack'?'Modpacks':'Discover'}</div><form className="global-search" onSubmit={e => { e.preventDefault(); setCatalogSelection(undefined); setCatalogQuery(globalSearch); setView(view === 'modpack' ? 'modpack' : 'mod'); requestAnimationFrame(() => document.getElementById('content-catalog')?.scrollIntoView({ behavior: 'smooth' })); }}><input aria-label="Search mods and packs" placeholder="Search mods and packs…" value={globalSearch} onChange={e => setGlobalSearch(e.target.value)}/></form><button className="account-chip" onClick={() => setShowConnection(!showConnection)}><span className={`dot ${token ? '' : 'grey'}`}/>{token ? 'Connected' : hosted ? 'Sign in' : 'Connect GitHub'}</button></header>}
       <div className={`content ${view==='home'?'home-content':''}`} id="launcher-home">
-        {view === 'home' && <section className="hero"><AnimatedBanner/><button className="hero-account" onClick={()=>setShowConnection(!showConnection)}>{token?'Connected':'Sign in'}</button><div className="hero-content"><h2>Ready when you are<span>.</span></h2><p>{profile?.name || 'My instance'} · {profile?.version} · {profile?.loader}</p><div className="hero-actions"><button className="primary" disabled={busy || editingLocked || !profile || !versions.length} onClick={() => void start()}>{busy ? (running ? 'Saving…' : 'Starting…') : catalogBusy ? 'Installing content…' : running ? 'Session in progress' : 'Play'}</button><button className="manage-button" onClick={() => navigate('instances','instances-list')}><Box size={18}/> My instances</button></div></div></section>}
+        {view === 'home' && <section className="hero"><AnimatedBanner/><button className="hero-account" onClick={()=>setShowConnection(!showConnection)}>{token?'Connected':'Sign in'}</button><div className="hero-content"><h2>Ready when you are<span>.</span></h2><p>{profile?.name || 'My instance'} · {profile?.version} · {profile?.loader}</p><div className="hero-actions"><button className="primary" disabled={busy || editingLocked || !profile || !versions.length} onClick={() => void start()}>{busy ? (running ? 'Saving…' : 'Starting…') : catalogBusy ? 'Installing content…' : running ? 'Session in progress' : 'Play'}{running&&status?.stage!=='minecraft-running'&&launchProgress.percent!==undefined?` · ${Math.floor(launchProgress.percent)}%`:''}</button><button className="manage-button" onClick={() => navigate('instances','instances-list')}><Box size={18}/> My instances</button></div></div></section>}
         <div className="page-sections">
         {error && <div role="alert" className="notice error">{error}<button onClick={() => setError('')} aria-label="Dismiss error"><X size={16}/></button></div>}
         <div role="status" className="status"><span className={`dot ${running ? '' : 'grey'}`}/>{message}{lastSave && <span className="save-time">Saved to browser at {new Date(lastSave).toLocaleTimeString()}</span>}</div>
@@ -273,7 +279,7 @@ export default function Home() {
         {showConnection && hosted && token && <section className="panel connection"><h3>Connected</h3><p>This browser is signed in. Your data stays on this device.</p><button disabled={editingLocked} onClick={async()=>{const r=await fetch('/api/logout',{method:'POST'});if(r.ok){setToken('');setShowConnection(false);}}}>Sign out</button></section>}
         {showConnection && hosted && !token && <section className="panel connection"><h3>Sign in to play</h3><p>Enter the launcher access code once. This device stays signed in for 30 days.</p><form onSubmit={async e=>{e.preventDefault();try{const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:accessCode})});if(!r.ok)throw new Error('Incorrect access code.');setToken('@server');setAccessCode('');setShowConnection(false);}catch(e){setError(String(e));}}}><label>Launcher access code<input type="password" autoComplete="current-password" value={accessCode} onChange={e=>setAccessCode(e.target.value)}/></label><button className="primary">Sign in</button></form></section>}
         {session?.url && <section className="panel player-panel"><div className="panel-title"><h3>Your session</h3><div className="inline-actions"><button onClick={fullscreen}><Maximize size={16}/> Fullscreen</button><a className="button-link" href={streamURL(session)} target="_blank" rel="noreferrer">Open stream ↗</a><button disabled={busy} onClick={stop}>Save & stop</button></div></div><p>Use the stream’s Gaming Mode to capture your mouse and keyboard. Hold Escape to leave fullscreen when supported. If embedded playback is blocked, open the stream in a new tab.</p>{status?.MICROSOFT_LOGIN_CODE && status.stage === 'microsoft-login' && <div className="notice">Microsoft sign-in: <a href={status.MICROSOFT_LOGIN_URL} target="_blank" rel="noreferrer">Open Microsoft</a> and enter <strong>{status.MICROSOFT_LOGIN_CODE}</strong></div>}<div className="player" ref={screen}><iframe title="Glide Minecraft stream" src={streamURL(session)} allow="fullscreen; autoplay; clipboard-read; clipboard-write" allowFullScreen sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups allow-downloads" referrerPolicy="no-referrer"/></div><small>Live snapshots sync every minute. Use Save & stop for a final save after Minecraft exits.</small></section>}
-        {running && !session?.url && <section className="panel queue"><div className="spinner"/><div><h3>Preparing your private session</h3><p>Restoring game files, starting the stream, and connecting your browser.</p></div><button disabled={busy} onClick={stop}>Cancel launch</button></section>}
+        {running && status?.stage!=='minecraft-running' && <ProgressPanel value={launchProgress}><button disabled={busy} onClick={stop}>{session?.url?'Save & stop':'Cancel launch'}</button></ProgressPanel>}
         {view !== 'home' && view !== 'instances' && view !== 'settings' && view !== 'account' && profile && <ContentBrowser key={view} profile={profile} type={view} locked={running} initialProject={catalogSelection} initialQuery={catalogQuery} downloadRepo={repo} actionsToken={token} onInstalled={contentInstalled} onWorking={setCatalogBusy}/>}
         {view==='account' && profile && <MicrosoftAccount profile={profile} clientId={microsoftClientId} hosted={hosted} connected={!!token} locked={editingLocked} onChange={change}/>}
         {(view === 'home' || view === 'instances' || view === 'settings') && <>
