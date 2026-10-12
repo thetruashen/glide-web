@@ -32,13 +32,13 @@ auth = config.get("auth", "offline")
 if auth not in {"offline", "microsoft"}:
     raise ValueError("Invalid account mode")
 client_id = config.get("clientId", "")
-if auth == "microsoft" and not re.fullmatch(r"[0-9a-fA-F-]{36}", client_id):
+if auth == "microsoft" and client_id and not re.fullmatch(r"[0-9a-fA-F-]{36}", client_id):
     raise ValueError("Microsoft login needs a registered public-client application ID")
 settings = {
     "GLIDE_MINECRAFT_VERSION": version["id"], "GLIDE_MINECRAFT_LOADER": loader,
     "GLIDE_MINECRAFT_XMX": str(max(1, min(int(config.get("memory", 4)), 8))) + "G",
     "GLIDE_OFFLINE_USERNAME": config.get("username", "GlidePlayer"), "GLIDE_AUTH_MODE": auth,
-    "GLIDE_MICROSOFT_CLIENT_ID": client_id, "GLIDE_JAVA_MAJOR": str(major),
+    "GLIDE_INSTANCE_NAME":str(config.get("name","Glide instance"))[:80], "GLIDE_MICROSOFT_CLIENT_ID": client_id, "GLIDE_JAVA_MAJOR": str(major),
     "GLIDE_WEB_ORIGIN": f"{origin.scheme}://{origin.netloc}", "GLIDE_RESOLUTION_PRESET": "custom",
     "GLIDE_RENDER_WIDTH": str(max(640, min(int(config.get("width", 1280)), 1920))),
     "GLIDE_RENDER_HEIGHT": str(max(360, min(int(config.get("height", 720)), 1080))),

@@ -9,6 +9,7 @@
     "test": "tsx --test tests/*.test.ts tests/*.test.tsx"
   },
   "dependencies": {
+    "@zip.js/zip.js": "^2.23.0",
     "idb": "8.0.3",
     "jszip": "3.10.1",
     "lucide-react": "^1.55.0",

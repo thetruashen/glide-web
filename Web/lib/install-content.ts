@@ -1,12 +1,12 @@
 import JSZip from 'jszip';
-import {MAX_FILE_BYTES,MAX_PROFILE_BYTES,MAX_EXPANDED_BYTES} from './limits';
+import {MAX_FILE_BYTES,MAX_PROFILE_BYTES,MAX_EXPANDED_BYTES,MAX_ARCHIVE_FILES} from './limits';
 import {readDownload,type ReportProgress} from './progress';
 import { downloadable, hostedCatalog, getProject, getRelease, releases, type CatalogFile, type ContentType, type Project, type Release } from './catalog-api';
 import type { Mod, Profile } from './storage';
 import { safePath } from './profile-paths';
 export { safePath } from './profile-paths';
 
-const MAX_FILES = 10000, MAX_DOWNLOAD = MAX_FILE_BYTES, MAX_EXPANDED = MAX_EXPANDED_BYTES;
+const MAX_FILES = MAX_ARCHIVE_FILES, MAX_DOWNLOAD = MAX_FILE_BYTES, MAX_EXPANDED = MAX_EXPANDED_BYTES;
 export function packSettings(dependencies: Record<string, string>): { version: string; loader: string; loaderVersion?: string } {
   const version = dependencies.minecraft;
   if (typeof version !== 'string' || !/^[\w.+-]{1,80}$/.test(version)) throw new Error('The modpack does not declare a valid Minecraft version.');
@@ -127,7 +127,7 @@ export async function installMod(release: Release, profile: Profile, existing: M
     next.push(mod);
   }
   signal.throwIfAborted();
-  if (next.reduce((size, m) => size + m.blob.size, 0) > MAX_PROFILE_BYTES) throw new Error('Installed mods exceed the 2 GiB transfer limit.');
+  if (next.reduce((size, m) => size + m.blob.size, 0) > MAX_PROFILE_BYTES) throw new Error('Installed mods exceed the 4 GiB transfer limit.');
   return next;
 }
 export type PackInstall = { settings: ReturnType<typeof packSettings>; mods: Mod[]; backup: Blob; name: string };
@@ -149,7 +149,7 @@ export async function installPack(archive: Blob, provider: 'modrinth' | 'cursefo
     path = safePath(path);
     if (output.file(path) && !override) throw new Error(`Duplicate pack file: ${path}`);
     total += blob.size;
-    if (total > MAX_EXPANDED) throw new Error('Expanded modpack exceeds 4 GiB.');
+    if (total > MAX_EXPANDED) throw new Error('Expanded modpack exceeds 8 GiB.');
     output.file(path, blob.arrayBuffer());
     if (path.startsWith('mods/') && path.endsWith('.jar')) {
       const name = path.slice(5);
@@ -224,7 +224,7 @@ export async function installPack(archive: Blob, provider: 'modrinth' | 'cursefo
   }
   progress('Preparing local instance…');
   const backup = await output.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 1 } },meta=>report?.({title:'Preparing local instance',detail:meta.currentFile || 'Compressing instance files',percent:meta.percent}));
-  if (backup.size > MAX_PROFILE_BYTES) throw new Error('This modpack exceeds the 2 GiB session transfer limit.');
+  if (backup.size > MAX_PROFILE_BYTES) throw new Error('This modpack exceeds the 4 GiB session transfer limit.');
   signal.throwIfAborted();
   return { settings, mods, backup, name };
 }

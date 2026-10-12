@@ -101,3 +101,10 @@ test('pack documentation at override root is skipped while actual options are pr
  const result=await installPack(archive,'curseforge',async()=>{throw new Error('No downloads expected');},()=>{},signal());
  const files=await JSZip.loadAsync(await result.backup.arrayBuffer());assert.equal(await files.file('options.txt')!.async('string'),'music:0');assert.equal(files.file('FOR SERVERS ONLY - SET THESE IN SERVER.PROPERTIES.txt'),null);
 });
+
+test('large legitimate pack archives can exceed the former 10,000-file cap',async()=>{
+ const zip=new JSZip();zip.file('manifest.json',JSON.stringify({manifestType:'minecraftModpack',manifestVersion:1,name:'Large pack',minecraft:{version:'1.19.2',modLoaders:[{id:'forge-43.5.0',primary:true}]},files:[]}));
+ for(let i=0;i<10001;i++)zip.file(`overrides/config/data/${i}.txt`,'');
+ const archive=new Blob([new Uint8Array(await zip.generateAsync({type:'uint8array'}))]);
+ const result=await installPack(archive,'curseforge',async()=>{throw new Error('No downloads expected');},()=>{},signal());assert.equal(result.settings.loaderVersion,'43.5.0');const restored=await JSZip.loadAsync(await result.backup.arrayBuffer());assert.ok(restored.file('config/data/10000.txt'));
+});

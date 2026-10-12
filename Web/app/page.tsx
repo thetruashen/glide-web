@@ -103,9 +103,9 @@ export default function Home() {
         if (!current.started) {
           setMessage('Sending your local profile directly to the runner…');
           const instance=items.find(p=>p.id===s.profileId);
-          if(instance?.auth==='microsoft'){const account=readyAccount();await runner(s,'account',JSON.stringify({name:account.name,id:account.id,accessToken:account.accessToken,expires:account.expires}));}
+          if(instance?.auth==='microsoft'&&instance.clientId){const account=readyAccount();await runner(s,'account',JSON.stringify({name:account.name,id:account.id,accessToken:account.accessToken,expires:account.expires}));}
           setLaunchProgress({title:'Preparing your local instance'});
-          const archive=await packProfile(s.profileId,false,percent=>setLaunchProgress({title:'Preparing your local instance',percent}));
+          const archive=await packProfile(s.profileId,false,(percent,title)=>setLaunchProgress({title:title || 'Preparing your local instance',percent}));
           await uploadProfile(s,archive,setLaunchProgress);
           await runner(s, 'start', '{}');
           setLaunchProgress({title:'Starting Minecraft'});s = { ...s, uploaded: true }; persistSession(s); setSession(s);
@@ -115,8 +115,8 @@ export default function Home() {
           sessionStorage.removeItem('glide-session'); setSession(undefined); setStatus(undefined);
           setMessage(current.error || 'Session finished. Your final save is in this browser.');
         } else {
-          setLaunchProgress({title:current.stage==='minecraft-running'?'Minecraft is running':current.stage==='microsoft-login'?'Waiting for Microsoft sign-in':`Starting Minecraft · ${current.stage.replaceAll('-', ' ')}`,percent:current.stage==='minecraft-running'?100:undefined});
-          setMessage(current.stage === 'minecraft-running' ? 'Connected. Your world is ready.' : `Preparing game · ${current.stage.replaceAll('-', ' ')}`);
+          setLaunchProgress({title:current.stage==='minecraft-running'?'Minecraft is running':current.stage==='microsoft-login'||current.stage==='official-microsoft-login'?'Sign in inside the official Minecraft Launcher':`Starting Minecraft · ${current.stage.replaceAll('-', ' ')}`,percent:current.stage==='minecraft-running'?100:undefined});
+          setMessage(current.stage === 'minecraft-running' ? 'Connected. Minecraft is running.' : `Preparing game · ${current.stage.replaceAll('-', ' ')}`);
           if (current.stage === 'minecraft-running' && Date.now() - snapshotTime.current > 60000) await checkpoint(s);
         }
         setError('');
@@ -168,7 +168,7 @@ export default function Home() {
     try {
       if (!token.trim()) { setShowConnection(true); throw new Error(hosted?'Sign in with the launcher access code to play.':'Enter a repository-scoped GitHub token with Actions read/write access.'); }
       if (!/^[A-Za-z0-9_]{3,16}$/.test(profileToLaunch.username)) throw new Error('Use a username with 3–16 letters, digits or underscores.');
-      if(profileToLaunch.auth==='microsoft')readyAccount();
+      if(profileToLaunch.auth==='microsoft'&&profileToLaunch.clientId)readyAccount();
       const incompatible = (await getMods(profileToLaunch.id)).find(m => (m.gameVersion && m.gameVersion !== profileToLaunch.version) || (m.loader && m.loader !== profileToLaunch.loader));
       if (incompatible) throw new Error(`${incompatible.name} targets a different Minecraft version or loader. Update or remove it before launching.`);
       sessionStorage.setItem('glide-token', token.trim());
@@ -281,7 +281,7 @@ export default function Home() {
         {session?.url && <section className="panel player-panel"><div className="panel-title"><h3>Your session</h3><div className="inline-actions"><button onClick={fullscreen}><Maximize size={16}/> Fullscreen</button><a className="button-link" href={streamURL(session)} target="_blank" rel="noreferrer">Open stream ↗</a><button disabled={busy} onClick={stop}>Save & stop</button></div></div><p>Use the stream’s Gaming Mode to capture your mouse and keyboard. Hold Escape to leave fullscreen when supported. If embedded playback is blocked, open the stream in a new tab.</p>{status?.MICROSOFT_LOGIN_CODE && status.stage === 'microsoft-login' && <div className="notice">Microsoft sign-in: <a href={status.MICROSOFT_LOGIN_URL} target="_blank" rel="noreferrer">Open Microsoft</a> and enter <strong>{status.MICROSOFT_LOGIN_CODE}</strong></div>}<div className="player" ref={screen}><iframe title="Glide Minecraft stream" src={streamURL(session)} allow="fullscreen; autoplay; clipboard-read; clipboard-write" allowFullScreen sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups allow-downloads" referrerPolicy="no-referrer"/></div><small>Live snapshots sync every minute. Use Save & stop for a final save after Minecraft exits.</small></section>}
         {running && status?.stage!=='minecraft-running' && <ProgressPanel value={launchProgress}><button disabled={busy} onClick={stop}>{session?.url?'Save & stop':'Cancel launch'}</button></ProgressPanel>}
         {view !== 'home' && view !== 'instances' && view !== 'settings' && view !== 'account' && profile && <ContentBrowser key={view} profile={profile} type={view} locked={running} initialProject={catalogSelection} initialQuery={catalogQuery} downloadRepo={repo} actionsToken={token} onInstalled={contentInstalled} onWorking={setCatalogBusy}/>}
-        {view==='account' && profile && <MicrosoftAccount profile={profile} clientId={microsoftClientId} hosted={hosted} connected={!!token} locked={editingLocked} onChange={change}/>}
+        {view==='account' && profile && <MicrosoftAccount profile={profile} clientId={microsoftClientId} hosted={hosted} connected={!!token} locked={editingLocked} onChange={change} onOfficialLogin={async()=>{const next={...profile,auth:'microsoft',clientId:''};await change({auth:'microsoft',clientId:''});await start(next);}}/>}
         {(view === 'home' || view === 'instances' || view === 'settings') && <>
         {view !== 'settings' && <section className="panel instance-list" id="instances-list"><div className="panel-title"><h2><Box size={22}/> My instances</h2><button className="primary" disabled={editingLocked} onClick={addProfile}><Plus size={18}/> New instance</button></div>{items.map(p => <div className={`instance-row ${p.id === profile?.id ? 'selected' : ''}`} key={p.id}>{p.pack?.icon?<img src={p.pack.icon} alt=""/>:<Box className="instance-icon" size={54}/>}<div className="instance-row-name"><strong>{p.name}</strong><small>{p.version} · {p.loader}{p.loaderVersion ? ` ${p.loaderVersion}` : ''}</small></div><span className="instance-kind">{p.pack ? p.pack.provider : 'Local'}</span><button disabled={editingLocked} onClick={() => {void select(p.id);setView('instances');}}> <Pencil size={16}/> Manage</button><button className="primary" disabled={busy || editingLocked || !versions.length} onClick={() => void start(p)}><Play size={17}/>{session?.profileId===p.id?(status?.stage==='minecraft-running'?'Playing':launchProgress.percent!==undefined?`Preparing · ${Math.floor(launchProgress.percent)}%`:'Preparing…'):busy&&profile?.id===p.id?'Starting…':'Play'}</button></div>)}</section>}
         {view==='instances' && <><div className="instance-heading"><h1>{profile?.name}</h1><small>{profile?.version} · {profile?.loader} · {mods.length} mods</small></div><nav className="detail-tabs" aria-label="Instance sections">{(['content','settings','backups'] as const).map(t=><button key={t} className={instanceTab===t?'selected':''} onClick={()=>setInstanceTab(t)}>{t.charAt(0).toUpperCase()+t.slice(1)}</button>)}</nav></>}

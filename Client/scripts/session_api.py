@@ -17,7 +17,7 @@ ROOT = Path(os.environ.get("GLIDE_MINECRAFT_DIR", "/home/runner/glide-minecraft"
 RUNTIME = Path(os.environ.get("GLIDE_SESSION_DIR", "/tmp/glide-session"))
 ALLOWED = {"saves", "mods", "config", "resourcepacks", "shaderpacks", "datapacks", "kubejs", "scripts", "defaultconfigs", "patchouli_books", "fancymenu", "openloader", "paxi", "global_packs", "packmenu", "journeymap"}
 FILES = {"options.txt", "optionsof.txt", "servers.dat"}
-MAX_BYTES = 2048 * 1024 * 1024
+MAX_BYTES = 4096 * 1024 * 1024
 LOCK = threading.RLock()
 DOWNLOAD_HOSTS = {'cdn.modrinth.com','edge.forgecdn.net','mediafilez.forgecdn.net','media.forgecdn.net','github.com','raw.githubusercontent.com','gitlab.com','release-assets.githubusercontent.com','objects.githubusercontent.com'}
 
@@ -75,7 +75,7 @@ def snapshot():
                 if child.is_file() and not child.is_symlink():
                     archive.write(child, child.relative_to(ROOT))
     if out.tell() > MAX_BYTES:
-        raise ValueError("Profile snapshot exceeds 2 GiB")
+        raise ValueError("Profile snapshot exceeds 4 GiB")
     return out.getvalue()
 
 
@@ -185,7 +185,7 @@ class Handler(BaseHTTPRequestHandler):
                 match = upload or finish
                 folder = RUNTIME / ('upload-' + match[1])
                 index = int(match[2])
-                if index > 256 or (upload and index >= 256):
+                if index > 512 or (upload and index >= 512):
                     raise ValueError('Too many chunks')
                 if upload:
                     length = int(self.headers.get('Content-Length', '0'))
@@ -205,15 +205,15 @@ class Handler(BaseHTTPRequestHandler):
                         part.write_bytes(data)
                         if sum(p.stat().st_size for p in folder.iterdir()) > MAX_BYTES:
                             shutil.rmtree(folder)
-                            raise ValueError('Profile exceeds 2 GiB')
+                            raise ValueError('Profile exceeds 4 GiB')
                     self.reply(200, {'chunk': index})
                 else:
-                    if not 1 <= index <= 256:
+                    if not 1 <= index <= 512:
                         raise ValueError('Invalid chunk count')
                     with LOCK:
                         data = b''.join((folder / str(i)).read_bytes() for i in range(index))
                         if len(data) > MAX_BYTES:
-                            raise ValueError('Profile exceeds 2 GiB')
+                            raise ValueError('Profile exceeds 4 GiB')
                         extract_archive(data, ROOT)
                         import shutil
                         shutil.rmtree(folder)
@@ -227,7 +227,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 length = int(self.headers.get("Content-Length", "0"))
                 if length <= 0 or length > MAX_BYTES:
-                    self.reply(413, {"error": "Profile must be under 2 GiB"})
+                    self.reply(413, {"error": "Profile must be under 4 GiB"})
                     return
                 data = self.rfile.read(length)
                 with LOCK:
