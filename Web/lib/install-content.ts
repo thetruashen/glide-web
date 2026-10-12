@@ -141,16 +141,16 @@ export async function installPack(archive: Blob, provider: 'modrinth' | 'cursefo
   }
   const expanded = Object.values(zip.files).reduce((sum, entry) => sum + ((entry as typeof entry & { _data?: { uncompressedSize?: number } })._data?.uncompressedSize || 0),0);
   if (expanded > MAX_EXPANDED) throw new Error('Modpack archive exceeds the expanded size limit.');
-  const output = new JSZip();
+  const output = new Map<string,Blob>();
   const mods: Mod[] = [];
   let total = 0;
   const paths = new Set<string>();
   function put(path: string, blob: Blob, meta: Partial<Mod> = {}, override = false) {
     path = safePath(path);
-    if (output.file(path) && !override) throw new Error(`Duplicate pack file: ${path}`);
-    total += blob.size;
+    if (output.has(path) && !override) throw new Error(`Duplicate pack file: ${path}`);
+    total += blob.size-(output.get(path)?.size || 0);
     if (total > MAX_EXPANDED) throw new Error('Expanded modpack exceeds 8 GiB.');
-    output.file(path, blob.arrayBuffer());
+    output.set(path,blob);
     if (path.startsWith('mods/') && path.endsWith('.jar')) {
       const name = path.slice(5);
       if (name.includes('/')) throw new Error('Nested mod JAR paths are not supported.');
@@ -225,7 +225,17 @@ export async function installPack(archive: Blob, provider: 'modrinth' | 'cursefo
     put(path, new Blob([await entry.async('arraybuffer')]), {}, true);
   }
   progress('Preparing local instance…');
-  const backup = await output.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 1 } },meta=>report?.({title:'Preparing local instance',detail:meta.currentFile || 'Compressing instance files',percent:meta.percent}));
+  // Stream Blob entries into ZIP64 instead of materializing every mod in RAM.
+  // JARs and audio are already compressed; storing them avoids a second costly pass.
+  const {ZipWriter,BlobWriter,BlobReader}=await import('@zip.js/zip.js');
+  const writer=new ZipWriter(new BlobWriter(),{zip64:true,level:0,useWebWorkers:false});
+  let written=0;
+  for(const [path,blob] of output){
+    signal.throwIfAborted();
+    await writer.add(path,new BlobReader(blob),{onprogress:loaded=>report?.({title:'Preparing local instance',detail:path,percent:total?(written+loaded)/total*100:100})});
+    written+=blob.size;
+  }
+  const backup=await writer.close();
   if (backup.size > MAX_PROFILE_BYTES) throw new Error('This modpack exceeds the 4 GiB session transfer limit.');
   signal.throwIfAborted();
   return { settings, mods, backup, name };

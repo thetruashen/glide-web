@@ -8,7 +8,7 @@ Start command: `python -m uvicorn app:app --interface wsgi --host 0.0.0.0 --port
 
 Configure private environment variables in Wasmer: CURSEFORGE_API_KEY, GITHUB_ACTIONS_TOKEN (Actions-only repository credential), GLIDE_SESSION_SECRET (at least 32 random bytes), GLIDE_ACCESS_CODE (shared only with invited players), GLIDE_ORIGIN (the public HTTPS origin). GLIDE_REPO defaults to thetruashen/glide-web. Never put the full-access GitHub credential in this service.
 
-Microsoft: the default flow opens the Prism Launcher inside the private streamed session. Players sign in directly there and select their prepared Glide installation. No player tokens, Microsoft app ID, or Azure setup are needed for this mode. The Prism client's account data stays in its private temporary directory and is excluded from instance backups and caches. Set MICROSOFT_CLIENT_ID only if you want the optional custom device-code flow instead.
+Microsoft: the default flow opens the Prism Launcher inside the private streamed session. Players sign in directly there and launch their prepared Glide instance. No player tokens, Microsoft app ID, or Azure setup are needed for this mode. The Prism client's account data stays in its private temporary directory and is excluded from instance backups and caches. Set MICROSOFT_CLIENT_ID only if you want the optional custom device-code flow instead.
 
 Large packs: downloads are limited to 1 GiB per file and use 8 MiB HTTP range requests. Instance archives and transfers support 4 GiB, 100,000 entries and 8 GiB expanded size. ZIP64-aware lazy readers preserve large backups without reading them as one giant JavaScript buffer. Unchanged saved archives are reused when launching.
 
