@@ -45,8 +45,8 @@ def find_game_pid(game):
         try:
             if (Path('/proc')/value/'cwd').resolve()==game.resolve():return int(value)
         except (OSError,ValueError):pass
-    # The isolated runner has no other Java application after preparation.
-    if len(result.stdout.split())==1:return int(result.stdout.strip())
+    # Prism also runs short Java compatibility probes outside the game folder.
+    # They must not be mistaken for Minecraft starting or finishing.
     return None
 
 def launch_official(game_directory,launch_version):

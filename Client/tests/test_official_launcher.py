@@ -2,8 +2,13 @@ import unittest,json,tempfile,sys,os
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from official_launcher import prepare_profile
+from official_launcher import prepare_profile,find_game_pid
+from types import SimpleNamespace
 class OfficialTests(unittest.TestCase):
+ def test_java_probe_is_not_reported_as_minecraft(self):
+  game=Path('/tmp/glide-minecraft')
+  with patch('official_launcher.subprocess.run',return_value=SimpleNamespace(stdout='123\n')),patch('official_launcher.Path.resolve',side_effect=[Path('/tmp/prism-data'),game]):
+   self.assertIsNone(find_game_pid(game))
  def test_profile_has_pinned_game_and_no_credentials(self):
   with tempfile.TemporaryDirectory() as d:
    game=Path(d)/'game';work=Path(d)/'private'
