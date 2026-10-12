@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import tarfile
 import time
@@ -32,6 +33,8 @@ def prepare_profile(work,game,launch_version):
     memory=os.environ.get('GLIDE_MINECRAFT_XMX','4G').upper()
     megabytes=int(memory[:-1])*(1024 if memory.endswith('G') else 1)
     name=os.environ.get('GLIDE_INSTANCE_NAME','Glide instance').replace('\n',' ').replace('\r',' ')
+    # Normal defaults only: leave Prism's account/consent page to the player.
+    (work/'prismlauncher.cfg').write_text(f'[General]\nLanguage=en_US\nJavaPath={shutil.which("java")}\nLastHostname={socket.gethostname()}\nAutomaticJavaSwitch=false\nAutomaticJavaDownload=false\nUserAskedAboutAutomaticJavaDownload=true\nApplicationTheme=dark\nIconTheme=pe_colored\n')
     (instance/'instance.cfg').write_text(f'[General]\nInstanceType=OneSix\nname={name}\nOverrideJavaLocation=true\nJavaPath={shutil.which("java")}\nOverrideMemory=true\nMinMemAlloc=512\nMaxMemAlloc={megabytes}\n')
     (instance/'mmc-pack.json').write_text(json.dumps({'formatVersion':1,'components':components}))
 
