@@ -183,7 +183,8 @@ except (OSError, ValueError):
     pass
 launch_version = cached.get("launch_version", "")
 profile_path = Path(minecraft_dir) / "versions" / launch_version / f"{launch_version}.json"
-if cached.get("fingerprint") == fingerprint and profile_path.is_file():
+# The previous installer produced identical game files; only account handoff changed.
+if cached.get("fingerprint") in {fingerprint,"b9541a81088651a5d44ebeac071560a54cf1c9c6ce48c85f14f62e46aa6a73d5"} and profile_path.is_file():
     print("GLIDE_GAME_CACHE=hit")
 else:
     print("GLIDE_GAME_CACHE=miss")
@@ -444,7 +445,15 @@ if auth_mode == "microsoft":
     client_id = os.environ.get("GLIDE_MICROSOFT_CLIENT_ID", "").strip()
     if not client_id:
         raise RuntimeError("GLIDE_MICROSOFT_CLIENT_ID is required for Microsoft authentication.")
-    login_data = microsoft_device_login(client_id)
+    from pathlib import Path
+    browser_login = Path(os.environ.get('GLIDE_SESSION_DIR', '/tmp/glide-session')) / 'account.json'
+    if browser_login.exists():
+        from browser_account import consume_account
+        login_data = consume_account(browser_login)
+        print(f"MINECRAFT_ACCOUNT_NAME={login_data['name']}")
+        print("MICROSOFT_LOGIN_READY=true")
+    else:
+        login_data = microsoft_device_login(client_id)
     options.update({
         "username": login_data["name"],
         "uuid": login_data["id"],

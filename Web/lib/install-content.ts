@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { downloadable, getProject, getRelease, releases, type CatalogFile, type ContentType, type Project, type Release } from './catalog-api';
+import { downloadable, hostedCatalog, getProject, getRelease, releases, type CatalogFile, type ContentType, type Project, type Release } from './catalog-api';
 import type { Mod, Profile } from './storage';
 import { safePath } from './profile-paths';
 export { safePath } from './profile-paths';
@@ -51,6 +51,7 @@ export function fileFetcher(signal: AbortSignal, supplied: RequestFile, relay?: 
     signal.throwIfAborted();
     if (!file.url) return verified(await supplied(file), file);
     try {
+      if(hostedCatalog() && relay && new URL(file.url).hostname.endsWith('forgecdn.net')) return await verified(await relay(file),file);
       const response = await fetch(trustedDownload(file.url), { credentials: 'omit', signal: AbortSignal.any([signal, AbortSignal.timeout(120000)]) });
       if (!response.ok) throw new Error(`Download returned ${response.status}`);
       trustedDownload(response.url);
@@ -65,9 +66,10 @@ export function fileFetcher(signal: AbortSignal, supplied: RequestFile, relay?: 
         try { return await verified(await relay(file),file); }
         catch (error) {
           signal.throwIfAborted();
-          if (error instanceof Error && /Integrity|size mismatch/.test(error.message)) throw error;
+          if (hostedCatalog() || (error instanceof Error && /Integrity|size mismatch/.test(error.message))) throw error;
         }
       }
+      for(const url of file.mirrors || []) { try {const r=await fetch(trustedDownload(url),{credentials:'omit',signal:AbortSignal.any([signal,AbortSignal.timeout(120000)])});if(r.ok)return await verified(await r.blob(),file);} catch(e){signal.throwIfAborted();if(e instanceof Error && /Integrity|size mismatch/.test(e.message))throw e;} }
       return verified(await supplied(file), file);
     }
   };
@@ -168,7 +170,7 @@ export async function installPack(archive: Blob, provider: 'modrinth' | 'cursefo
       paths.add(path);
       if (!Array.isArray(file.downloads) || !file.downloads.length) throw new Error(`No download supplied for ${path}`);
       const hash = file.hashes?.sha512 ? { algorithm: 'SHA-512' as const, value: file.hashes.sha512 } : { algorithm: 'SHA-1' as const, value: file.hashes?.sha1 || '' };
-      tasks.push(async () => put(path, await fetchFile({ name: path.split('/').pop()!, url: file.downloads[0], size: file.fileSize, hash }), { provider: 'modrinth', gameVersion: settings.version, loader: settings.loader }));
+      tasks.push(async () => put(path, await fetchFile({ name: path.split('/').pop()!, url: file.downloads[0], mirrors:file.downloads.slice(1), size: file.fileSize, hash }), { provider: 'modrinth', gameVersion: settings.version, loader: settings.loader }));
     }
     overrideFolders = ['overrides/', 'client-overrides/'];
   } else {

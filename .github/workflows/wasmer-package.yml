@@ -1,0 +1,38 @@
+name: Build Wasmer deployment package
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['Web/**', 'Hosting/**', '.github/workflows/wasmer-package.yml']
+permissions:
+  contents: read
+concurrency:
+  group: wasmer-package
+  cancel-in-progress: true
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: Web/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install -r Hosting/requirements.txt
+      - run: python -m unittest discover -s Hosting
+      - run: npm ci && npm test && npm run build
+        working-directory: Web
+      - run: python Hosting/package_site.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glide-wasmer
+          path: |
+            Hosting/app.py
+            Hosting/microsoft.py
+            Hosting/requirements.txt
+            Hosting/public/
+          retention-days: 7

@@ -54,6 +54,7 @@ jobs:
           key: game-v3-${{ runner.os }}-${{ runner.arch }}-${{ steps.request.outputs.java }}-${{ steps.request.outputs.version }}-${{ steps.request.outputs.loader-cache }}-${{ hashFiles('Client/scripts/glide_launch.py', 'Client/requirements.txt') }}
           restore-keys: |
             game-v3-${{ runner.os }}-${{ runner.arch }}-${{ steps.request.outputs.java }}-${{ steps.request.outputs.version }}-${{ steps.request.outputs.loader }}-${{ hashFiles('Client/scripts/glide_launch.py', 'Client/requirements.txt') }}
+            game-v3-${{ runner.os }}-${{ runner.arch }}-${{ steps.request.outputs.java }}-${{ steps.request.outputs.version }}-${{ steps.request.outputs.loader }}-
       - name: Prepare exact modpack loader
         if: env.GLIDE_LOADER_VERSION != '' && steps.game.outputs.cache-hit != 'true'
         run: python Client/scripts/install_pinned_loader.py

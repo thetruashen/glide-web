@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import { clearCatalogCache, curseKey, downloadable, getDescription, releases, searchProjects, type CatalogFile, type ContentType, type Project, type Provider, type Release } from '../lib/catalog-api';
+import {ArrowLeft,ArrowRight,SlidersHorizontal,Download,ExternalLink,Package,Search,Upload} from 'lucide-react';
+import ProjectText from './ProjectText';
+import { categories as getCategories, type Category, changelog, clearCatalogCache, curseKey, downloadable, getDescription, getProject, hostedCatalog, releasePage, releases, searchProjects, type CatalogFile, type ContentType, type Project, type Provider, type Release } from '../lib/catalog-api';
 import { commitInstallation, getBackup, getMods, type Profile } from '../lib/storage';
 import { fileFetcher, installAsset, installMod, installPack } from '../lib/install-content';
 import { DownloadHelper } from '../lib/download-helper';
@@ -13,8 +14,19 @@ const count = (value: number) => new Intl.NumberFormat('en', { notation:'compact
 export default function ContentBrowser({ profile, type, locked, initialProject, initialQuery, downloadRepo, actionsToken, onInstalled, onWorking }: Props) {
   const [provider, setProvider] = useState<Provider>(type === 'modpack' ? 'curseforge' : 'modrinth');
   const [query, setQuery] = useState('');
+  const [categoryOptions,setCategoryOptions]=useState<Category[]>([]);
+  const [categoryIds,setCategoryIds]=useState<string[]>([]);
+  const [versionOptions,setVersionOptions]=useState<string[]>([]);
+  const [versionSearch,setVersionSearch]=useState('');
+  const [gameFilter,setGameFilter]=useState('');
+  const [searchLoader,setSearchLoader]=useState('');
+  const [environment,setEnvironment]=useState<''|'client_only'|'client_and_server'|'server_only'>('');
+  const [openSource,setOpenSource]=useState(false);
+  const [showFilters,setShowFilters]=useState(false);
   const [sort, setSort] = useState<'downloads'|'relevance'|'updated'>('downloads');
   const [onlyCompatible, setOnlyCompatible] = useState(type !== 'modpack');
+  const effectiveVersion=onlyCompatible?profile.version:gameFilter || undefined;
+  const effectiveLoader=searchLoader || (onlyCompatible && profile.loader!=='vanilla'?profile.loader:undefined);
   const [key, setKey] = useState('');
   const [projects, setProjects] = useState<Project[]>([]);
   const [total, setTotal] = useState(0);
@@ -33,39 +45,44 @@ export default function ContentBrowser({ profile, type, locked, initialProject, 
   const manualRef = useRef<Manual | undefined>(undefined);
   const controller = useRef<AbortController | undefined>(undefined);
   const detailRequest = useRef(0);
-  const modal = useRef<HTMLDialogElement>(null);
+  const [tab,setTab]=useState<'description'|'gallery'|'changelog'|'versions'>('description');
+  const [releaseFilter,setReleaseFilter]=useState('');
+  const [loaderFilter,setLoaderFilter]=useState('');
+  const [changes,setChanges]=useState('');
+  const [olderOffset,setOlderOffset]=useState(50);
+  const [moreVersions,setMoreVersions]=useState(false);
+  const [olderBusy,setOlderBusy]=useState(false);
   const installed = useRef(false);
   useEffect(() => { setKey(curseKey()); return () => { controller.current?.abort(); manualRef.current?.reject(new Error('Installation cancelled')); }; }, []);
   useEffect(() => { if (initialQuery !== undefined) setQuery(initialQuery); }, [initialQuery]);
-  useEffect(() => { setOffset(0); }, [query, provider, type, sort, onlyCompatible, profile.version, profile.loader]);
+  useEffect(()=>{const abort=new AbortController();setCategoryIds([]);getCategories(provider,type,abort.signal).then(setCategoryOptions).catch(()=>setCategoryOptions([]));return()=>abort.abort();},[provider,type,key]);
+  useEffect(()=>{fetch(`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/versions.json`).then(r=>r.json()).then(c=>setVersionOptions(c.versions.map((v:{id:string})=>v.id))).catch(()=>{});},[]);
+  useEffect(() => { setOffset(0); }, [query, provider, type, sort, onlyCompatible, profile.version, profile.loader,gameFilter,searchLoader,categoryIds,environment,openSource]);
   useEffect(() => {
     const abort = new AbortController();
     setLoading(true); setProjects([]); setTotal(0); setError('');
     const timer = setTimeout(async () => {
       setLoading(true); setError('');
       try {
-        if (type === 'mod' && onlyCompatible && profile.loader === 'vanilla') { setProjects([]); setTotal(0); return; }
-        const result = await searchProjects({ provider, type, query, sort, offset, version: onlyCompatible ? profile.version : undefined, loader: onlyCompatible ? profile.loader : undefined }, abort.signal);
+        if (type === 'mod' && onlyCompatible && profile.loader === 'vanilla' && !searchLoader) { setProjects([]); setTotal(0); return; }
+        const result = await searchProjects({ provider, type, query, sort, offset, version:effectiveVersion,loader:effectiveLoader,categories:categoryIds,environment:provider==='modrinth'?environment:undefined,openSource:provider==='modrinth'?openSource:undefined }, abort.signal);
         if (!abort.signal.aborted) { setProjects(result.projects); setTotal(result.total); }
       } catch (e) { if (!abort.signal.aborted) { setProjects([]); setError(String(e)); } }
       finally { if (!abort.signal.aborted) setLoading(false); }
     }, 350);
     return () => { clearTimeout(timer); abort.abort(); };
-  }, [query, provider, type, sort, offset, onlyCompatible, profile.version, profile.loader, key, retry]);
+  }, [query, provider, type, sort, offset, onlyCompatible, profile.version, profile.loader, key, retry,gameFilter,searchLoader,categoryIds,environment,openSource]);
   async function open(project: Project) {
     const request = ++detailRequest.current;
-    setSelected(project); setDescription(''); setVersions([]); setVersionId(''); setDetailsLoading(true); setError('');
+    setSelected(project); setDescription(''); setVersions([]); setVersionId(''); setDetailsLoading(true); setError(''); setTab('description'); setReleaseFilter(''); setLoaderFilter('');
     try {
-      const [body, files] = await Promise.all([getDescription(project), releases(project, type === 'modpack' && !onlyCompatible ? undefined : profile.version, type === 'mod' ? profile.loader : undefined)]);
+      const [body, page, full] = await Promise.all([getDescription(project), releasePage(project), getProject(project.provider,project.id)]);
       if (request !== detailRequest.current) return;
-      setDescription(body); setVersions(files); setVersionId(files[0]?.id || '');
+      const files=page.items; setOlderOffset(50);setMoreVersions(project.provider==='curseforge'&&page.total>50);setSelected({...full,author:full.author || project.author}); setDescription(body); setVersions(files); setVersionId((files.find(v=>type==='modpack' || (v.gameVersions.includes(profile.version) && (type!=='mod' || v.loaders.includes(profile.loader)))) || files[0])?.id || ''); window.scrollTo({top:0});
     } catch (e) { if (request === detailRequest.current) setError(String(e)); } finally { if (request === detailRequest.current) setDetailsLoading(false); }
   }
   useEffect(() => { if (initialProject) { setProvider(initialProject.provider); void open(initialProject); } }, [initialProject]);
-  useEffect(() => {
-    if (selected && !modal.current?.open) modal.current?.showModal();
-    if (!selected && modal.current?.open) modal.current?.close();
-  }, [selected]);
+  useEffect(()=>{let active=true;const release=versions.find(v=>v.id===versionId);setChanges('Loading changelog…');if(release)changelog(release).then(text=>{if(active)setChanges(text);}).catch(e=>{if(active)setChanges(String(e));});return()=>{active=false;};},[versions,versionId]);
   function cancelInstall() { controller.current?.abort(); manualRef.current?.reject(new Error('Installation cancelled')); setManual(undefined); manualRef.current = undefined; }
   function requestManual(file: CatalogFile): Promise<Blob> {
     return new Promise((resolve, reject) => { const value = { file, resolve, reject }; manualRef.current = value; setManual(value); });
@@ -76,7 +93,7 @@ export default function ContentBrowser({ profile, type, locked, initialProject, 
     const abort = new AbortController(); controller.current = abort;
     const helper = actionsToken?.trim() && downloadRepo ? new DownloadHelper(downloadRepo, actionsToken.trim(), setProgress) : undefined;
     try {
-      const fetchFile = fileFetcher(abort.signal, requestManual, helper ? file => helper.fetch(file,abort.signal) : undefined);
+      const fetchFile = fileFetcher(abort.signal, requestManual, hostedCatalog() ? async file => { const r=await fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:file.url,size:file.size}),signal:abort.signal}); if(!r.ok)throw new Error(await r.text()); return r.blob(); } : helper ? file => helper.fetch(file,abort.signal) : undefined);
       if (type === 'modpack' || archive) {
         const packProvider = archive ? (archive.name.endsWith('.mrpack') ? 'modrinth' : 'curseforge') : release!.provider;
         const file = archive || await fetchFile(await downloadable(release!));
@@ -97,27 +114,33 @@ export default function ContentBrowser({ profile, type, locked, initialProject, 
     } catch (e) { setError(abort.signal.aborted ? 'Installation cancelled. Your existing files are unchanged.' : String(e)); }
     finally { await helper?.close(); setInstalling(false); onWorking(false); setManual(undefined); manualRef.current = undefined; controller.current = undefined; }
   }
-  const chosen = versions.find(v => v.id === versionId);
-  return <section className="catalog panel" id="content-catalog">
-    <div className="catalog-heading"><div><span className="eyebrow">DISCOVER YOUR NEXT UPGRADE</span><h2>{label[type]}</h2><p>{type === 'modpack' ? 'Complete adventures, installed into a new local instance.' : `Make ${profile.name} your own. Files stay in your browser.`}</p></div>{type === 'modpack' && <label className="button-link import-pack">↑ Import pack<input type="file" accept=".zip,.mrpack" disabled={locked || installing} onChange={e => { const file = e.target.files?.[0]; if (file) void perform(undefined,file); e.target.value=''; }}/></label>}</div>
-    <div className="provider-tabs" role="group" aria-label="Content provider"><button className={provider === 'modrinth' ? 'selected' : ''} disabled={installing} onClick={() => setProvider('modrinth')}><span className="provider-dot mr"/>Modrinth</button><button className={provider === 'curseforge' ? 'selected' : ''} disabled={installing} onClick={() => setProvider('curseforge')}><span className="provider-dot cf"/>CurseForge</button><span className="catalog-local">▣ Local installation</span></div>
-    {provider === 'curseforge' && <div className="cf-credential"><label>CurseForge API key<input type="password" autoComplete="off" spellCheck={false} value={key} placeholder="Paste your CurseForge API key" onChange={e => { setKey(e.target.value); sessionStorage.setItem('glide-curseforge-key',e.target.value.trim()); clearCatalogCache(); }}/></label><small>Kept in this tab. Sent only to api.curseforge.com; never to GitHub or file download hosts.</small></div>}
-    <div className="catalog-toolbar"><input aria-label={`Search ${label[type].toLowerCase()}`} placeholder={`Search ${label[type].toLowerCase()}…`} value={query} onChange={e => setQuery(e.target.value)}/><select aria-label="Sort catalog" value={sort} onChange={e => setSort(e.target.value as typeof sort)}><option value="downloads">Most downloaded</option><option value="relevance">Relevance</option><option value="updated">Recently updated</option></select><label className="checkbox"><input type="checkbox" checked={onlyCompatible} onChange={e => setOnlyCompatible(e.target.checked)}/>{profile.version} {type === 'mod' ? `· ${profile.loader}` : ''} only</label></div>
-    <div className="catalog-summary"><span>{loading ? 'Searching…' : `${count(total)} results`}</span><span>{profile.name} · {profile.version} · {profile.loader}</span></div>
-    {provider === 'curseforge' && <p className="install-note">{actionsToken ? 'Automatic file downloads use a temporary private Actions helper when the CDN blocks browser requests.' : 'Connect GitHub in the launcher for automatic file downloads. Without it, blocked files can be supplied manually.'}</p>}
-    {error && <div className="notice error" role="alert">{error}{!installing && <button onClick={() => setRetry(retry + 1)}>Retry</button>}</div>}
-    {installing && !selected && <div className="install-progress"><span className="spinner"/>{progress}<button onClick={cancelInstall}>Cancel install</button></div>}
-    {!loading && !error && !projects.length && <div className="catalog-empty">{type === 'mod' && profile.loader === 'vanilla' && onlyCompatible ? 'Choose Fabric, Forge, Quilt or NeoForge in your instance settings to install mods.' : 'No results. Try another search or disable the version filter.'}</div>}
-    <div className="project-grid" aria-busy={loading}>{projects.map(project => <button className="project-card" key={`${project.provider}:${project.id}`} onClick={() => open(project)} disabled={installing}><div className="project-art">{project.image || project.icon ? <img loading="lazy" src={project.image || project.icon} alt=""/> : <span>▧</span>}<span className={`provider-badge ${project.provider}`}>{project.provider === 'curseforge' ? 'CF' : 'M'}</span></div><div className="project-card-body"><div className="project-title">{project.icon && <img loading="lazy" src={project.icon} alt=""/>}<h3>{project.title}</h3></div><p>{project.description}</p><div className="project-tags">{project.categories.slice(0,3).map(c => <span key={c}>{c}</span>)}</div><div className="project-card-footer"><span>↓ {count(project.downloads)}</span><span>View details →</span></div></div></button>)}</div>
-    <div className="catalog-pagination"><button disabled={offset === 0 || loading} onClick={() => setOffset(Math.max(0,offset-12))}>← Previous</button><span>Page {Math.floor(offset/12)+1}</span><button disabled={offset+12>=total || loading} onClick={() => setOffset(offset+12)}>Next →</button></div>
-    <dialog className="project-dialog" ref={modal} onCancel={e => { if (installing) e.preventDefault(); else setSelected(undefined); }} onClose={() => { if (!installing) setSelected(undefined); }}>
-      {selected && <><div className="dialog-top"><div>{selected.icon && <img src={selected.icon} alt=""/>}<div><span className="eyebrow">{selected.provider === 'curseforge' ? 'CURSEFORGE' : 'MODRINTH'} / {label[type]}</span><h2>{selected.title}</h2><small>By {selected.author || 'the project team'} · {count(selected.downloads)} downloads</small></div></div><button aria-label="Close project details" disabled={installing} onClick={() => setSelected(undefined)}>×</button></div><p>{selected.description}</p>
-      {detailsLoading ? <div className="install-progress"><span className="spinner"/>Loading project and releases…</div> : <><div className="release-picker"><label>Release to install<select value={versionId} disabled={installing} onChange={e => setVersionId(e.target.value)}>{versions.map(v => <option key={v.id} value={v.id}>{v.title} · {v.gameVersions.filter(s => /^\d|^1\./.test(s)).slice(0,3).join(', ')}</option>)}</select></label><button className="primary" disabled={!chosen || locked || installing} onClick={() => void perform(chosen)}>{installing ? 'Installing…' : type === 'modpack' ? 'Install as new instance' : 'Install to instance'}</button></div>{!versions.length && <div className="notice">No compatible release for {profile.version} / {profile.loader}. Try a different instance or view the project on its website.</div>}<p className="install-note">{type === 'modpack' ? 'A new instance uses the pack’s declared Minecraft version and exact loader. Existing worlds are preserved.' : `Target: ${profile.name} (${profile.version} / ${profile.loader}). Required dependencies are included.`}</p></>}
-      {installing && <div className="install-progress" role="status"><span className="spinner"/>{progress}<button onClick={cancelInstall}>Cancel install</button></div>}
-      {manual && <div className="manual-download"><strong>Author download required</strong><p>{manual.file.name}</p><a href={manual.file.manualUrl || manual.file.url || selected.url} target="_blank" rel="noreferrer">Open official download page ↗</a><label className="button-link">Choose downloaded file<input type="file" onChange={e => { const file = e.target.files?.[0]; if (file) { if (file.name !== manual.file.name) setError(`Choose ${manual.file.name}, not ${file.name}.`); else { manual.resolve(file); manualRef.current = undefined; setManual(undefined); setError(''); } } e.target.value=''; }}/></label><small>The downloaded file must match the provider’s checksum before installation.</small></div>}
-      {error && <div className="notice error" role="alert">{error}</div>}
-      <div className="project-description">{selected.provider === 'modrinth' ? <ReactMarkdown skipHtml components={{ a: props => <a {...props} target="_blank" rel="noreferrer"/>, img: props => <img {...props} loading="lazy" alt={props.alt || ''}/> }}>{description || 'Loading description…'}</ReactMarkdown> : description || 'The project description will appear here.'}</div><a className="project-source" href={selected.url} target="_blank" rel="noreferrer">View full project on {selected.provider === 'curseforge' ? 'CurseForge' : 'Modrinth'} ↗</a></>}
-    </dialog>
-    {manual && !selected && <div className="manual-download"><strong>Manual download required: {manual.file.name}</strong><a href={manual.file.manualUrl || manual.file.url} target="_blank" rel="noreferrer">Official file page ↗</a><label className="button-link">Choose file<input type="file" onChange={e => { const file=e.target.files?.[0]; if (file) { manual.resolve(file); setManual(undefined); manualRef.current=undefined; } e.target.value=''; }}/></label></div>}
+  async function loadOlder() {if(!selected||olderBusy)return;setOlderBusy(true);try{const page=await releasePage(selected,undefined,undefined,olderOffset);setVersions(current=>[...current,...page.items.filter(v=>!current.some(c=>c.id===v.id))]);setOlderOffset(olderOffset+50);setMoreVersions(olderOffset+50<page.total);}catch(e){setError(String(e));}finally{setOlderBusy(false);}}
+  const chosen=versions.find(v=>v.id===versionId);
+  const canInstall=(v:Release)=>type==='modpack'||(v.gameVersions.includes(profile.version)&&(type!=='mod'||v.loaders.includes(profile.loader)));
+  const feedback=<>{error&&<div className="notice error" role="alert">{error}<button onClick={()=>{setError('');setRetry(retry+1);}}>Retry</button></div>}{installing&&<div className="install-progress" role="status"><span className="spinner"/>{progress}<button onClick={cancelInstall}>Cancel</button></div>}{manual&&<div className="manual-download"><strong>Author download required: {manual.file.name}</strong><p>The author has not made this file available through the API. Choose the official file to continue; its checksum is verified.</p><a href={manual.file.manualUrl||manual.file.url||selected?.url} target="_blank" rel="noreferrer">Official download page <ExternalLink size={16}/></a><label className="button-link"><Upload size={16}/> Choose file<input type="file" onChange={e=>{const file=e.target.files?.[0];if(file){manual.resolve(file);manualRef.current=undefined;setManual(undefined);}e.target.value='';}}/></label></div>}</>;
+  if(selected)return <section className="project-page" id="content-catalog">
+    <button className="back-link" disabled={installing} onClick={()=>{++detailRequest.current;setSelected(undefined);setError('');}}><ArrowLeft size={18}/> Back to {label[type].toLowerCase()}</button>
+    <div className="project-header"><div className="project-icon">{selected.icon?<img src={selected.icon} alt=""/>:<Package/>}</div><div className="project-heading"><span className="eyebrow">{selected.provider} · {label[type]}</span><h1>{selected.title}</h1><p>{selected.description}</p><div className="project-meta"><span>By {selected.author||'the project team'}</span><span><Download size={16}/>{count(selected.downloads)}</span></div></div><button className="primary" disabled={detailsLoading||!chosen||!canInstall(chosen)||locked||installing} onClick={()=>void perform(chosen)}><Download size={18}/>{installing?'Installing…':'Install'}</button></div>
+    <nav className="detail-tabs" aria-label="Project sections">{(['description','gallery','changelog','versions'] as const).map(t=><button key={t} className={tab===t?'selected':''} aria-current={tab===t?'page':undefined} onClick={()=>setTab(t)}>{t.charAt(0).toUpperCase()+t.slice(1)}{t==='versions'&&` (${versions.length})`}</button>)}</nav>{feedback}
+    <div className="project-layout"><div className="project-body">{detailsLoading?<div className="catalog-empty">Loading project…</div>:<>
+      {tab==='description'&&<ProjectText base={selected.url}>{description||selected.description}</ProjectText>}
+      {tab==='gallery'&&<div className="gallery-grid">{selected.gallery?.length?selected.gallery.map((g,i)=><figure key={i}><a href={g.url} target="_blank" rel="noreferrer"><img loading="lazy" src={g.url} alt={g.title||`${selected.title} screenshot ${i+1}`}/></a>{g.title&&<figcaption>{g.title}</figcaption>}</figure>):<p>No gallery images provided.</p>}</div>}
+      {tab==='changelog'&&<><label>Release<select value={versionId} onChange={e=>setVersionId(e.target.value)}>{versions.map(v=><option key={v.id} value={v.id}>{v.title}</option>)}</select></label><ProjectText base={selected.url}>{changes}</ProjectText></>}
+      {tab==='versions'&&<><div className="versions-filters"><select aria-label="Filter Minecraft versions" value={releaseFilter} onChange={e=>setReleaseFilter(e.target.value)}><option value="">All Minecraft versions</option>{[...new Set(versions.flatMap(v=>v.gameVersions).filter(v=>/^\d/.test(v)))].map(v=><option key={v}>{v}</option>)}</select><select aria-label="Filter loaders" value={loaderFilter} onChange={e=>setLoaderFilter(e.target.value)}><option value="">All loaders</option>{[...new Set(versions.flatMap(v=>v.loaders))].map(v=><option key={v}>{v}</option>)}</select></div><div className="version-list">{versions.filter(v=>(!releaseFilter||v.gameVersions.includes(releaseFilter))&&(!loaderFilter||v.loaders.includes(loaderFilter))).map(v=><article key={v.id}><div><strong>{v.title}</strong><div className="project-tags">{v.gameVersions.filter(g=>/^\d/.test(g)).slice(0,5).map(g=><span key={g}>{g}</span>)}{v.loaders.map(l=><span key={l}>{l}</span>)}</div><small>{new Date(v.date).toLocaleDateString()} · {v.files[0]?.name}</small></div><button disabled={locked||installing||!canInstall(v)} title={canInstall(v)?'Install this release':'Change the instance version or loader first'} onClick={()=>{setVersionId(v.id);void perform(v);}}><Download size={16}/> Install</button></article>)}</div>{moreVersions && <button disabled={olderBusy||installing} onClick={()=>void loadOlder()}>{olderBusy?'Loading…':'Load older releases'}</button>}</>}
+    </>}</div><aside className="project-info"><section><h3>Install to</h3><p>{type==='modpack'?'A new instance':profile.name}</p><small>{type==='modpack'?'Uses the pack’s Minecraft version and loader.':`${profile.version} · ${profile.loader}`}</small><label>Selected release<select value={versionId} disabled={installing} onChange={e=>setVersionId(e.target.value)}>{versions.map(v=><option key={v.id} value={v.id}>{v.title}</option>)}</select></label>{chosen&&!canInstall(chosen)&&<p className="warning">Choose a compatible release or change your instance version and loader.</p>}</section><section><h3>Compatibility</h3><div className="project-tags">{[...new Set(versions.flatMap(v=>v.loaders))].map(l=><span key={l}>{l}</span>)}</div><div className="project-tags">{[...new Set(versions.flatMap(v=>v.gameVersions).filter(v=>/^\d/.test(v)))].slice(0,18).map(v=><span key={v}>{v}</span>)}</div></section><section><h3>Categories</h3><div className="project-tags">{selected.categories.map(c=><span key={c}>{c}</span>)}</div><a href={selected.url} target="_blank" rel="noreferrer">View on {selected.provider} <ExternalLink size={14}/></a></section></aside></div>
+  </section>;
+  return <section className="catalog" id="content-catalog"><div className="catalog-heading"><div><h1>{label[type]}</h1><p>{type==='modpack'?'Find your next adventure. Every pack gets its own instance.':`Discover content for ${profile.name}.`}</p></div>{type==='modpack'&&<label className="button-link"><Upload size={16}/> Import pack<input type="file" accept=".zip,.mrpack" disabled={locked||installing} onChange={e=>{const file=e.target.files?.[0];if(file)void perform(undefined,file);e.target.value='';}}/></label>}</div><div className="provider-tabs" role="group" aria-label="Content provider">{(['modrinth','curseforge'] as const).map(p=><button key={p} className={provider===p?'selected':''} disabled={installing} onClick={()=>setProvider(p)}>{p==='modrinth'?'Modrinth':'CurseForge'}</button>)}</div>
+    {provider==='curseforge'&&!hostedCatalog()&&<details className="cf-credential"><summary>Configure local CurseForge access</summary><label>CurseForge API key<input type="password" autoComplete="off" value={key} onChange={e=>{setKey(e.target.value);sessionStorage.setItem('glide-curseforge-key',e.target.value.trim());clearCatalogCache();}}/></label></details>}
+    <button className="filter-toggle" onClick={()=>setShowFilters(!showFilters)}><SlidersHorizontal size={16}/> Filters</button>
+    <div className="catalog-columns"><aside className={`catalog-filters ${showFilters?'expanded':''}`}><div className="filter-heading"><strong>Filters</strong><button onClick={()=>{setCategoryIds([]);setGameFilter('');setSearchLoader('');setEnvironment('');setOpenSource(false);setOnlyCompatible(false);}}>Reset</button></div>
+    <section><h3>Game version</h3><label className="checkbox"><input type="checkbox" checked={onlyCompatible} onChange={e=>setOnlyCompatible(e.target.checked)}/> Match my instance</label><input aria-label="Find game versions" placeholder="Find a version…" value={versionSearch} onChange={e=>setVersionSearch(e.target.value)}/><select aria-label="Filter game version" value={onlyCompatible?profile.version:gameFilter} onChange={e=>{setOnlyCompatible(false);setGameFilter(e.target.value);}}><option value="">All versions</option>{versionOptions.filter(v=>v.includes(versionSearch)).map(v=><option key={v}>{v}</option>)}</select></section>
+    {(type==='mod'||type==='modpack')&&<section><h3>Loader</h3><select aria-label="Filter mod loader" value={effectiveLoader||''} disabled={provider==='curseforge'&&!effectiveVersion} onChange={e=>{setOnlyCompatible(false);setGameFilter(effectiveVersion||'');setSearchLoader(e.target.value);}}><option value="">All loaders</option>{['fabric','forge','neoforge','quilt'].map(l=><option key={l} value={l}>{l==='neoforge'?'NeoForge':l.charAt(0).toUpperCase()+l.slice(1)}</option>)}</select>{provider==='curseforge'&&!effectiveVersion&&<small>Select a game version to filter by loader.</small>}</section>}
+    <section><h3>Categories</h3><div className="category-options">{categoryOptions.map(c=><label key={c.id} className="checkbox"><input type="checkbox" checked={categoryIds.includes(c.id)} disabled={!categoryIds.includes(c.id)&&categoryIds.length>=10} onChange={e=>setCategoryIds(e.target.checked?[...categoryIds,c.id]:categoryIds.filter(id=>id!==c.id))}/>{c.name}</label>)}</div>{!categoryOptions.length&&<small>No category filters available.</small>}</section>
+    {provider==='modrinth'&&<section><h3>Environment</h3><select aria-label="Filter environment" value={environment} onChange={e=>setEnvironment(e.target.value as typeof environment)}><option value="">Any environment</option><option value="client_only">Client only</option><option value="client_and_server">Client and server</option><option value="server_only">Server only</option></select><label className="checkbox"><input type="checkbox" checked={openSource} onChange={e=>setOpenSource(e.target.checked)}/> Open source only</label></section>}
+    </aside><div className="catalog-results">
+    <div className="catalog-toolbar"><div className="search-field"><Search size={18}/><input aria-label={`Search ${label[type].toLowerCase()}`} placeholder={`Search ${label[type].toLowerCase()}…`} value={query} onChange={e=>setQuery(e.target.value)}/></div><select aria-label="Sort catalog" value={sort} onChange={e=>setSort(e.target.value as typeof sort)}><option value="downloads">Most downloaded</option><option value="relevance">Relevance</option><option value="updated">Recently updated</option></select></div><div className="catalog-summary">{loading?'Searching…':`${count(total)} results`}</div>{feedback}
+    {!loading&&!error&&!projects.length&&<div className="catalog-empty">{type==='mod'&&profile.loader==='vanilla'&&onlyCompatible?'Choose a mod loader in instance settings to install mods.':'No results. Try another search or remove the version filter.'}</div>}
+    <div className="project-list" aria-busy={loading}>{projects.map(p=><button className="project-row" key={`${p.provider}:${p.id}`} disabled={installing} onClick={()=>void open(p)}><div className="project-icon">{p.icon?<img loading="lazy" src={p.icon} alt=""/>:<Package/>}</div><div className="project-row-text"><h3>{p.title}<small> by {p.author}</small></h3><p>{p.description}</p><div className="project-tags">{p.categories.slice(0,4).map(c=><span key={c}>{c}</span>)}</div></div><span className="project-downloads"><Download size={16}/>{count(p.downloads)}</span><ArrowRight size={18}/></button>)}</div><div className="catalog-pagination"><button disabled={offset===0||loading||installing} onClick={()=>setOffset(Math.max(0,offset-12))}><ArrowLeft size={16}/> Previous</button><span>Page {Math.floor(offset/12)+1}</span><button disabled={offset+12>=total||loading||installing} onClick={()=>setOffset(offset+12)}>Next <ArrowRight size={16}/></button></div>
+    </div></div>
   </section>;
 }

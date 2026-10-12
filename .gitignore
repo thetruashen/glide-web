@@ -11,3 +11,4 @@ Client/glide-runtime-agent/build/
 .venv/
 .publish/
 *.tsbuildinfo
+Hosting/public/

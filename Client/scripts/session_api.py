@@ -235,6 +235,23 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(200, {"uploaded": True})
             except (ValueError, OSError, zipfile.BadZipFile):
                 self.reply(400, {"error": "Invalid profile ZIP"})
+        elif route == '/glide-api/account':
+            if (RUNTIME / 'start').exists():
+                self.reply(409, {'error':'Session already started'})
+                return
+            try:
+                from browser_account import validate_account
+                length=int(self.headers.get('Content-Length','0'))
+                if not 0<length<20000:raise ValueError('Invalid account payload')
+                data=json.loads(self.rfile.read(length))
+                validate_account(data)
+                path=RUNTIME/'account.json'
+                with LOCK:
+                    path.write_text(json.dumps(data))
+                    path.chmod(0o600)
+                self.reply(200,{'ready':True})
+            except (ValueError,TypeError,OSError):
+                self.reply(400,{'error':'Invalid or expired Minecraft sign-in. Sign in again.'})
         elif route == "/glide-api/start":
             (RUNTIME / "start").touch()
             self.reply(200, {"started": True})

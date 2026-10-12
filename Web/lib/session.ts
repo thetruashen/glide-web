@@ -6,6 +6,11 @@ const bytes = (value: string) => Uint8Array.from(atob(value), c => c.charCodeAt(
 const b64 = (value: ArrayBuffer) => btoa(String.fromCharCode(...new Uint8Array(value)));
 export function persistSession(s: Session) { sessionStorage.setItem(s.workflow === 'catalog-download.yml' ? 'glide-catalog-helper' : 'glide-session', JSON.stringify(s)); }
 export async function github(repo: string, path: string, token: string, body?: unknown, method?: string) {
+  if(token==='@server') {
+    const response=await fetch('/api/actions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({repo,path,body,method:method || (body?'POST':'GET')})});
+    if(!response.ok){const error=await response.json().catch(()=>({}));throw new Error(`Launcher ${response.status}: ${error.error || 'Request failed'}`);}
+    return response.status===204 || response.status===202 ? null : response.json();
+  }
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error('Repository must be owner/name');
   const response = await fetch(`https://api.github.com/repos/${repo}${path ? '/' + path : ''}`, {
     method: method || (body ? 'POST' : 'GET'),

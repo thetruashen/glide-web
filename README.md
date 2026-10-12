@@ -58,3 +58,7 @@ npm run dev
 For another repository, enable Pages with **GitHub Actions** as the source and dispatch **Publish Glide website**. Its build sets the repository name as the Next.js base path and the correct default session repository. Forks can change the repository in Connection; public repositories can host Pages subject to the account's plan. The original standalone server workflow is not part of this browser session product.
 
 Reference: [Next.js static exports](https://nextjs.org/docs/app/guides/static-exports), [GitHub Actions dependency caching](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching), [minecraft-launcher-lib mod loader API](https://minecraft-launcher-lib.readthedocs.io/en/stable/modules/mod_loader.html).
+
+## Hosted launcher
+
+The primary launcher is https://glide-thetruashen.wasmer.app. See [Hosting/README.md](Hosting/README.md) for deployment, private credentials, Microsoft device-code configuration, and portable instance backups. GitHub Pages remains a static fallback and requires tab-local credentials.
