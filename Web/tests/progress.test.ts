@@ -13,3 +13,9 @@ test('download errors identify the file and preserve the actual server reason',a
 test('byte limits cancel streams before an oversized file can be installed',async()=>{
  const r=new Response(new Uint8Array([1,2,3]));await assert.rejects(readDownload(r,'mod.jar',2,new AbortController().signal),/exceeds expected size/);
 });
+
+test('large files download through bounded range requests',async()=>{
+ const {gatewayDownload}=await import('../lib/gateway-download');const original=globalThis.fetch;const requests:{offset:number;length:number}[]=[];
+ globalThis.fetch=async(_,init)=>{const body=JSON.parse(String(init?.body));requests.push(body);return new Response(new Uint8Array(body.length));};
+ try{const blob=await gatewayDownload({name:'large.zip',url:'https://mediafilez.forgecdn.net/file',size:8*1048576+3},new AbortController().signal);assert.equal(blob.size,8*1048576+3);assert.deepEqual(requests.map(r=>[r.offset,r.length]),[[0,8*1048576],[8*1048576,3]]);}finally{globalThis.fetch=original;}
+});

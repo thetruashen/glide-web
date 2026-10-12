@@ -3,6 +3,7 @@ import hmac
 import os
 import re
 import time
+from functools import lru_cache
 from datetime import timedelta
 from pathlib import Path
 from urllib.parse import urlsplit, urljoin
@@ -114,14 +115,27 @@ def safe_url(value):
         raise ValueError('Unsupported download host')
     return value
 
-def open_file(url):
+def open_file(url,byte_range=None):
+    # CurseForge's edge redirector returns 404 when sent Range directly.
+    # Resolve its API-published URL normally, then range-read that exact CDN URL.
+    if byte_range and urlsplit(url).hostname=='edge.forgecdn.net':url=resolved_file_url(url)
     for _ in range(6):
         safe_url(url)
-        result=requests.get(url,stream=True,allow_redirects=False,timeout=(15,120),headers={'User-Agent':'GlideWeb/2','Accept-Encoding':'identity'})
+        headers={'User-Agent':'GlideWeb/2','Accept-Encoding':'identity'}
+        if byte_range:headers['Range']=byte_range
+        result=requests.get(url,stream=True,allow_redirects=False,timeout=(15,120),headers=headers)
         if result.is_redirect:
             next_url=urljoin(url,result.headers.get('Location',''));result.close();url=next_url;continue
         return result
     raise ValueError('Too many download redirects')
+
+@lru_cache(maxsize=512)
+def resolved_file_url(url):
+    result=open_file(url)
+    try:
+        if not result.ok:raise ValueError(f'The official download returned {result.status_code}')
+        return safe_url(result.url)
+    finally:result.close()
 
 @app.post('/api/download')
 def download():
@@ -132,7 +146,12 @@ def download():
         if not 0<=size<=MAX_FILE: raise ValueError('This file exceeds the 1 GiB download limit')
         url=body.get('url','')
         if not isinstance(url,str) or not url or len(url)>4096: raise ValueError('The provider did not supply a valid file URL')
-        upstream=open_file(url)
+        segment=None
+        if 'offset' in body:
+            offset=int(body['offset']);segment=int(body.get('length',0))
+            if not size or not 0<=offset<size or not 1<=segment<=8*1048576 or offset+segment>size:raise ValueError('Invalid download chunk')
+            upstream=open_file(url,f'bytes={offset}-{offset+segment-1}')
+        else:upstream=open_file(url)
         if not upstream.ok:
             status=upstream.status_code;upstream.close()
             return jsonify(error=f'The official download returned {status}.'),502
@@ -142,7 +161,10 @@ def download():
         length=int(length_header) if str(length_header).isdigit() else 0
         if length>MAX_FILE:
             upstream.close();raise ValueError('This file exceeds the 1 GiB download limit')
-        if upstream.status_code==206:
+        if segment:
+            if upstream.status_code!=206 or upstream.headers.get('Content-Range')!=f'bytes {offset}-{offset+segment-1}/{size}':
+                upstream.close();raise ValueError('The CDN did not return the requested file chunk. Retry the download.')
+        elif upstream.status_code==206:
             upstream.close();raise ValueError('The CDN returned only part of the file. Retry the download.')
     except (ValueError,TypeError) as error:
         return jsonify(error=str(error) or 'Invalid download request'),400
@@ -151,12 +173,14 @@ def download():
         try:
             for chunk in upstream.iter_content(131072):
                 total+=len(chunk)
-                if total>MAX_FILE or (size and total>size): raise ValueError('Download exceeds expected size')
+                expected=segment or size
+                if total>MAX_FILE or (expected and total>expected): raise ValueError('Download exceeds expected size')
                 yield chunk
-            if size and total!=size: raise ValueError('Incomplete download')
+            expected=segment or size
+            if expected and total!=expected: raise ValueError('Incomplete download')
         finally: upstream.close()
     response=Response(stream_with_context(chunks()),content_type='application/octet-stream')
-    if size:response.headers['X-File-Size']=str(size)
+    if size:response.headers['X-File-Size']=str(segment or size)
     return response
 
 def gh(path,method='GET',body=None):

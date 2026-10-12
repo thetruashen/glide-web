@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import {ArrowLeft,ArrowRight,SlidersHorizontal,Download,ExternalLink,Package,Search,Upload} from 'lucide-react';
 import ProjectText from './ProjectText';
 import ProgressPanel from './ProgressPanel';
-import {readDownload,type ProgressInfo} from '../lib/progress';
+import type {ProgressInfo} from '../lib/progress';
+import {gatewayDownload} from '../lib/gateway-download';
 import { categories as getCategories, type Category, changelog, clearCatalogCache, curseKey, downloadable, getDescription, getProject, hostedCatalog, releasePage, releases, searchProjects, type CatalogFile, type ContentType, type Project, type Provider, type Release } from '../lib/catalog-api';
 import { commitInstallation, getBackup, getMods, type Profile } from '../lib/storage';
 import { fileFetcher, installAsset, installMod, installPack } from '../lib/install-content';
@@ -101,10 +102,7 @@ export default function ContentBrowser({ profile, type, locked, initialProject, 
     const helper = actionsToken?.trim() && downloadRepo ? new DownloadHelper(downloadRepo, actionsToken.trim(), setProgress) : undefined;
     try {
       const report=(value:ProgressInfo)=>{setInstallProgress(value);if(value.fileIndex!==undefined)setTransferProgress(undefined);};
-      const fetchFile = fileFetcher(abort.signal, requestManual, hostedCatalog() ? async file => {
-        const response=await fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:file.url,size:file.size}),signal:abort.signal});
-        return readDownload(response,file.name,file.size,abort.signal,setTransferProgress);
-      } : helper ? file => helper.fetch(file,abort.signal) : undefined,setTransferProgress);
+      const fetchFile = fileFetcher(abort.signal, requestManual, hostedCatalog() ? file=>gatewayDownload(file,abort.signal,setTransferProgress) : helper ? file => helper.fetch(file,abort.signal) : undefined,setTransferProgress);
       if (type === 'modpack' || archive) {
         setInstallProgress({title:archive?'Reading uploaded pack':'Downloading pack archive'});
         const packProvider = archive ? (archive.name.endsWith('.mrpack') ? 'modrinth' : 'curseforge') : release!.provider;

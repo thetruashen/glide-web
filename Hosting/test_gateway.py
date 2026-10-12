@@ -42,4 +42,14 @@ class GatewayTests(unittest.TestCase):
   with patch('app.open_file',return_value=upstream):
    r=self.client.post('/api/download',json={'url':'https://edge.forgecdn.net/files/chocolate.zip','size':884252114},headers=self.origin,buffered=False)
    self.assertEqual(r.status_code,200);self.assertEqual(r.headers['X-File-Size'],'884252114');r.close()
+ def test_range_chunks_are_verified_against_content_range(self):
+  upstream=Mock(ok=True,status_code=206,headers={'Content-Length':'4','Content-Range':'bytes 8-11/12'})
+  upstream.iter_content.return_value=[b'abcd']
+  with patch('app.open_file',return_value=upstream) as opener:
+   r=self.client.post('/api/download',json={'url':'https://mediafilez.forgecdn.net/files/a.zip','size':12,'offset':8,'length':4},headers=self.origin)
+   self.assertEqual(r.status_code,200);self.assertEqual(r.data,b'abcd');self.assertEqual(opener.call_args.args[1],'bytes=8-11')
+  upstream.headers['Content-Range']='bytes 0-3/12'
+  with patch('app.open_file',return_value=upstream):
+   r=self.client.post('/api/download',json={'url':'https://mediafilez.forgecdn.net/files/a.zip','size':12,'offset':8,'length':4},headers=self.origin)
+   self.assertEqual(r.status_code,400)
 if __name__=='__main__':unittest.main()
