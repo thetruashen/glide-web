@@ -209,9 +209,10 @@ export async function installPack(archive: Blob, provider: 'modrinth' | 'cursefo
   for (const [i, task] of tasks.entries()) {
     signal.throwIfAborted(); progress(`Installing pack files ${i + 1}/${tasks.length}`);report?.({title:'Installing pack files',fileIndex:i+1,fileCount:tasks.length,percent:i/tasks.length*100});await task();report?.({title:'Installing pack files',fileIndex:i+1,fileCount:tasks.length,percent:(i+1)/tasks.length*100});
   }
-  for (const folder of overrideFolders) for (const entry of Object.values(zip.files)) {
+  const overrideEntries=overrideFolders.flatMap(folder=>Object.values(zip.files).filter(entry=>!entry.dir&&entry.name.startsWith(folder)).map(entry=>({folder,entry})));
+  for (const [index,{folder,entry}] of overrideEntries.entries()) {
     signal.throwIfAborted();
-    if (entry.dir || !entry.name.startsWith(folder)) continue;
+    report?.({title:'Applying pack configuration',detail:entry.name,fileIndex:index+1,fileCount:overrideEntries.length,percent:index/overrideEntries.length*100});
     const path = entry.name.slice(folder.length);
     if (/^(README|LICENSE|CHANGELOG)(\.[\w]+)?$/i.test(path)) continue;
     // Pack authors include read-me/server instructions alongside overrides.
