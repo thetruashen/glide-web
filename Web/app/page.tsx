@@ -115,7 +115,7 @@ export default function Home() {
           sessionStorage.removeItem('glide-session'); setSession(undefined); setStatus(undefined);
           setMessage(current.error || 'Session finished. Your final save is in this browser.');
         } else {
-          setLaunchProgress({title:current.stage==='minecraft-running'?'Minecraft is running':current.stage==='microsoft-login'||current.stage==='official-microsoft-login'?'Sign in inside the official Minecraft Launcher':`Starting Minecraft · ${current.stage.replaceAll('-', ' ')}`,percent:current.stage==='minecraft-running'?100:undefined});
+          setLaunchProgress({title:current.stage==='minecraft-running'?'Minecraft is running':current.stage==='microsoft-login'||current.stage==='prism-microsoft-login'?'Sign in with Prism Launcher':`Starting Minecraft · ${current.stage.replaceAll('-', ' ')}`,percent:current.stage==='minecraft-running'?100:undefined});
           setMessage(current.stage === 'minecraft-running' ? 'Connected. Minecraft is running.' : `Preparing game · ${current.stage.replaceAll('-', ' ')}`);
           if (current.stage === 'minecraft-running' && Date.now() - snapshotTime.current > 60000) await checkpoint(s);
         }
