@@ -1,22 +1,21 @@
-# Backend performance ideas — proposals only
+# Backend performance ideas — no new changes applied
 
-These began as proposals during the UI update. Gameplay boost now implements compatible runtime performance mods, balanced JVM settings, lower-priority 30 FPS encoding, a fixed 960×540 render cap, and lower-cost live snapshots. Prepackaged runtimes and GPU hosting remain proposals; see README.md for the implemented behavior.
+Automatic performance-mod installation has been removed. The mod catalog and player-installed files remain available. Existing Java, render-cap, stream-priority and snapshot settings remain unchanged. The following are proposals only, with no automatic mod additions.
 
-1. **Measure each stage first.** Separate runner queue time, cache restore, apt installation, loader preparation, instance transfer, Minecraft startup and world entry. Compare cold and warm launches. Measure game frame time, simulation tick time, memory and encoder CPU separately.
-2. **Prepackage the runtime.** Evaluate a tested image with desktop, audio, streaming and launcher dependencies already installed. The current workflow installs these through apt on each fresh runner. Validate container display/audio permissions before changing the deployment.
-3. **Improve immutable caches.** Cache exact loader/runtime installations using game version, loader version, Java, architecture and installer inputs. Keep website-only changes out of those cache keys. Measure transfer costs and prioritize popular configurations. Never cache private worlds or account data.
-4. **Benchmark streaming CPU use.** Compare the current 60 FPS software H.264 stream with 30 FPS and lower resolutions. Match the game frame cap to the stream target. This may free CPU for rendering and simulation, at the cost of motion clarity.
-5. **Evaluate GPU rendering and hardware encoding.** Xvfb/Mesa in the current workflow suggests CPU rendering may be a bottleneck; confirm the actual OpenGL renderer first. A GPU-backed host could address rendering and encoding together, but needs available hardware and possibly paid hosting. Extra repositories do not give each runner a GPU.
-6. **Test optional performance mods per loader/version.** ModernFix targets load time and memory; Lithium targets simulation; Sodium targets rendering on Fabric/NeoForge. Verify exact releases, pack compatibility and Mesa support. Preserve pack pins and avoid duplicates. ModernFix dynamic resources needs separate compatibility testing. Do not promise a universal speedup or inject these into every pack.
-7. **Tune memory from measurements.** Test supported Java versions and heap sizes with GC logs. Leave memory for the operating system, Mesa and encoder. More heap is not automatically faster; avoid generic flag bundles.
-8. **Reduce repeated instance transfer work.** Explore content-addressed immutable mod files plus changed-save transfers, while retaining complete recoverable snapshots and hash checks. Avoid repacking unchanged large mods. Shared caches must exclude private saves and credentials.
+Previous live testing identified LLVMpipe CPU rendering on a four-core runner. This is evidence about that runner, not a controlled benchmark across all packs. Separate frame time, chunk generation, simulation, garbage collection and background work before choosing changes.
 
-Start with timing, runtime packaging and encoder benchmarks, then evaluate pack-specific changes. These are hypotheses, not measured speedup claims.
+1. **GPU-backed rendering and encoding.** The strongest hardware option to investigate: move OpenGL rendering off the CPU and use a hardware encoder where available. Requires a suitable runner/host, potentially paid infrastructure; copying repositories cannot create GPU hardware. Measure frame-time spikes as well as average FPS.
+2. **Benchmark Mesa and CPU scheduling.** Compare LLVMpipe worker counts and documented native-vector widths on the actual runner. The game, software renderer and encoder share limited CPU. Measure movement through existing chunks separately from new terrain; avoid blind global thread pinning or unsupported driver flags.
+3. **Incremental live backups.** Track changes so unchanged multi-gigabyte mods are not read and packed every backup. Keep atomic save capture, checksums and complete recoverable browser backups. This may reduce gameplay interruptions if they coincide with snapshots; it needs measurements first.
+4. **Tune heap and GC from evidence.** Record GC pauses, memory pressure and frame times using supported Java versions for each loader. Leave RAM for Mesa, the encoder and OS. More heap or a large flag bundle does not automatically improve gameplay. Do not change pack-provided Java constraints.
+5. **Reduce unnecessary background processes.** Profile the desktop, launcher, audio, session API and stream worker. Consider suspending idle UI work only after confirming safe shutdown and session recovery. Evaluate separate CPU budgets for the game and encoding.
+6. **Predictable runner resources.** A persistent host with a faster CPU and adequate RAM may reduce chunk-generation and simulation stalls. Compare single-thread performance and resource contention. Extra runner accounts increase concurrent capacity, not one game's CPU speed.
+7. **Preinstalled runtime image and immutable caches.** Bundle Java versions, desktop/audio/stream dependencies and launcher tools; cache exact game/loader installations. This targets startup time, not sustained gameplay FPS. Never include private saves or account data. A downloaded container image also has transfer cost.
+
+Suggested order: measure frame-time spikes and backup overlap, benchmark renderer scheduling, then evaluate hardware. Keep preinstalled runtimes as a separate startup improvement.
 
 Sources:
 
-- Current implementation: `.github/workflows/glide-session.yml`.
-- [Mesa LLVMpipe software renderer](https://docs.mesa3d.org/drivers/llvmpipe.html)
-- [Sodium](https://github.com/CaffeineMC/sodium)
-- [Lithium](https://github.com/CaffeineMC/lithium)
-- [ModernFix](https://github.com/embeddedt/ModernFix)
+- Current implementation: `.github/workflows/glide-session.yml`, `Client/scripts/session_api.py`.
+- [Mesa LLVMpipe renderer, vector-width controls and profiling](https://docs.mesa3d.org/drivers/llvmpipe.html)
+- [Oracle Java GC tuning guidance](https://docs.oracle.com/en/java/javase/21/gctuning/introduction-garbage-collection-tuning.html)

@@ -451,10 +451,6 @@ if os.environ.get("GLIDE_INSTALL_ONLY") == "1":
 
 from performance_defaults import apply_defaults
 apply_defaults(minecraft_dir,version)
-if os.environ.get('GLIDE_GAMEPLAY_PERFORMANCE','1')=='1':
-    from gameplay_performance import install
-    actual_loader=components_for(minecraft_dir,launch_version,version,loader,os.environ.get('GLIDE_LOADER_VERSION',''))
-    install(minecraft_dir,version,loader,actual_loader[-1]['version'],int(os.environ.get('GLIDE_JAVA_MAJOR','21')))
 print("GLIDE_STAGE=minecraft-options")
 options = minecraft_launcher_lib.utils.generate_test_options()
 
