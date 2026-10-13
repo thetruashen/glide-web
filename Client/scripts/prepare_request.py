@@ -34,14 +34,17 @@ if auth not in {"offline", "microsoft", "prompt"}:
 client_id = config.get("clientId", "")
 if auth == "microsoft" and client_id and not re.fullmatch(r"[0-9a-fA-F-]{36}", client_id):
     raise ValueError("Microsoft login needs a registered public-client application ID")
+from gameplay_performance import render_resolution
+boost=config.get('performance') is not False
+render_width,render_height=render_resolution(config.get('width',1280),config.get('height',720),boost)
 settings = {
     "GLIDE_MINECRAFT_VERSION": version["id"], "GLIDE_MINECRAFT_LOADER": loader,
     "GLIDE_MINECRAFT_XMX": str(max(1, min(int(config.get("memory", 4)), 8))) + "G",
     "GLIDE_OFFLINE_USERNAME": config.get("username", "GlidePlayer"), "GLIDE_AUTH_MODE": auth,
     "GLIDE_INSTANCE_NAME":str(config.get("name","Glide instance"))[:80], "GLIDE_MICROSOFT_CLIENT_ID": client_id, "GLIDE_JAVA_MAJOR": str(major),
     "GLIDE_WEB_ORIGIN": f"{origin.scheme}://{origin.netloc}", "GLIDE_RESOLUTION_PRESET": "custom",
-    "GLIDE_RENDER_WIDTH": str(max(640, min(int(config.get("width", 1280)), 1920))),
-    "GLIDE_RENDER_HEIGHT": str(max(360, min(int(config.get("height", 720)), 1080))),
+    "GLIDE_RENDER_WIDTH": str(render_width),
+    "GLIDE_RENDER_HEIGHT": str(render_height),
     "GLIDE_MAX_RESTARTS": "0",
     "GLIDE_LOADER_VERSION": loader_version,
     "GLIDE_GAMEPLAY_PERFORMANCE": "0" if config.get('performance') is False else "1",

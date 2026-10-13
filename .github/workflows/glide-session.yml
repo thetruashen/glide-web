@@ -126,14 +126,17 @@ jobs:
             echo "GLIDE_PULSE_SOURCE=glide_game_sink.monitor"
           } >> "$GITHUB_ENV"
           STREAM_NICE=0
-          if [ "$GLIDE_GAMEPLAY_PERFORMANCE" = "1" ]; then STREAM_NICE=5; fi
-          nice -n "$STREAM_NICE" selkies --public --port=8080 --mode=websockets --enable-https=false --basic-auth-user=glide --basic-auth-password="$GLIDE_SELKIES_PASSWORD" --encoder=h264enc --enable-resize=true --raw-pointer-motion=true --video-framerate="$GLIDE_STREAM_FPS" --video-bitrate=8000 --congestion-control >/tmp/glide-selkies.log 2>&1 &
+          STREAM_RESIZE=true
+          if [ "$GLIDE_GAMEPLAY_PERFORMANCE" = "1" ]; then STREAM_NICE=5; STREAM_RESIZE=false; fi
+          nice -n "$STREAM_NICE" selkies --public --port=8080 --mode=websockets --enable-https=false --basic-auth-user=glide --basic-auth-password="$GLIDE_SELKIES_PASSWORD" --encoder=h264enc --enable-resize="$STREAM_RESIZE" --raw-pointer-motion=true --video-framerate="$GLIDE_STREAM_FPS" --video-bitrate=8000 --congestion-control >/tmp/glide-selkies.log 2>&1 &
           for i in $(seq 1 60); do curl -fsS -u "glide:$GLIDE_SELKIES_PASSWORD" http://127.0.0.1:8080/ >/dev/null 2>&1 && break; sleep 1; done
           curl -fsS -u "glide:$GLIDE_SELKIES_PASSWORD" http://127.0.0.1:8080/ >/dev/null
       - name: Start authenticated profile API and streaming gateway
         run: |
           set -euo pipefail
-          python Client/scripts/session_api.py >/tmp/glide-api.log 2>&1 &
+          API_NICE=0
+          if [ "$GLIDE_GAMEPLAY_PERFORMANCE" = "1" ]; then API_NICE=5; fi
+          nice -n "$API_NICE" python Client/scripts/session_api.py >/tmp/glide-api.log 2>&1 &
           for i in $(seq 1 30); do test -s /tmp/glide-session/secret && break; sleep 1; done
           BASIC=$(printf 'glide:%s' "$GLIDE_SELKIES_PASSWORD" | base64 -w0)
           echo "::add-mask::$BASIC"

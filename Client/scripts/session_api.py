@@ -76,7 +76,10 @@ def snapshot():
             for child in paths:
                 if child.is_file() and not child.is_symlink():
                     if child.relative_to(ROOT).as_posix() in managed:continue
-                    archive.write(child, child.relative_to(ROOT))
+                    # These formats are already compressed; deflating them again burns
+                    # game CPU every live checkpoint without useful size savings.
+                    packed=child.suffix.lower() in {'.jar','.zip','.png','.jpg','.jpeg','.webp','.ogg','.mp3','.mp4','.gz','.zst'}
+                    archive.write(child, child.relative_to(ROOT),compress_type=zipfile.ZIP_STORED if packed else zipfile.ZIP_DEFLATED)
     if out.tell() > MAX_BYTES:
         raise ValueError("Profile snapshot exceeds 4 GiB")
     return out.getvalue()

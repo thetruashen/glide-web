@@ -122,3 +122,10 @@ def owned_mods(runtime,root):
 def java_flags():
     # Balanced collector on CPU-constrained rendering hosts; no aggressive pause target.
     return ['-XX:+UseG1GC','-XX:+DisableExplicitGC']
+
+def render_resolution(width,height,enabled=True):
+    width=max(640,min(int(width),1920));height=max(360,min(int(height),1080))
+    if enabled:
+        scale=min(1,960/width,540/height)
+        width=max(640,int(width*scale));height=max(360,int(height*scale))
+    return width,height
