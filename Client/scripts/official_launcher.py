@@ -26,14 +26,15 @@ def prepare_profile(work,game,launch_version):
         version=installed.get('inheritsFrom',launch_version)
     loader=os.environ.get('GLIDE_MINECRAFT_LOADER','forge' if '-forge-' in launch_version else 'vanilla')
     components=components_for(game,launch_version,version,loader,os.environ.get('GLIDE_LOADER_VERSION',''))
+    icons=work/'icons';icons.mkdir(exist_ok=True);shutil.copy2(Path(__file__).resolve().parents[1]/'assets'/'pigmc.png',icons/'pigmc.png')
     instance=work/'instances'/'glide';instance.mkdir(parents=True,exist_ok=True)
     if not (instance/'.minecraft').exists():(instance/'.minecraft').symlink_to(game,target_is_directory=True)
     memory=os.environ.get('GLIDE_MINECRAFT_XMX','4G').upper()
     megabytes=int(memory[:-1])*(1024 if memory.endswith('G') else 1)
-    name=os.environ.get('GLIDE_INSTANCE_NAME','Glide instance').replace('\n',' ').replace('\r',' ')
+    name=os.environ.get('GLIDE_INSTANCE_NAME','pigmc instance').replace('\n',' ').replace('\r',' ')
     # Normal defaults only: leave Prism's account/consent page to the player.
     (work/'prismlauncher.cfg').write_text(f'[General]\nLanguage=en_US\nJavaPath={shutil.which("java")}\nLastHostname={socket.gethostname()}\nAutomaticJavaSwitch=false\nAutomaticJavaDownload=false\nUserAskedAboutAutomaticJavaDownload=true\nApplicationTheme=dark\nIconTheme=pe_colored\n')
-    (instance/'instance.cfg').write_text(f'[General]\nInstanceType=OneSix\nname={name}\nOverrideJavaLocation=true\nJavaPath={shutil.which("java")}\nOverrideMemory=true\nMinMemAlloc=512\nMaxMemAlloc={megabytes}\n')
+    (instance/'instance.cfg').write_text(f'[General]\nInstanceType=OneSix\niconKey=pigmc\nname={name}\nOverrideJavaLocation=true\nJavaPath={shutil.which("java")}\nOverrideMemory=true\nMinMemAlloc=512\nMaxMemAlloc={megabytes}\n')
     (instance/'mmc-pack.json').write_text(json.dumps({'formatVersion':1,'components':components}))
 
 def find_game_pid(game):
@@ -74,6 +75,7 @@ def launch_official(game_directory,launch_version):
     pid=None
     try:
         while not (runtime/'stop').exists():
+            subprocess.run(['xdotool','search','--pid',str(process.pid),'set_window','--name','pigmc · Microsoft sign-in'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
             candidate=find_game_pid(game)
             if not pid and candidate:
                 pid=candidate;print(f'MINECRAFT_PID={pid}',flush=True);print('GLIDE_STAGE=minecraft-running',flush=True)
@@ -81,7 +83,7 @@ def launch_official(game_directory,launch_version):
                 try:
                     if (Path('/proc')/str(pid)/'stat').read_text().split()[2]=='Z':break
                 except OSError:break
-            elif process.poll() is not None:raise RuntimeError('Prism Launcher closed before Minecraft started. Launch again to sign in.')
+            elif process.poll() is not None:raise RuntimeError('pigmc sign-in closed before Minecraft started. Launch again to sign in.')
             time.sleep(1)
     finally:
         try:os.killpg(process.pid,signal.SIGTERM)

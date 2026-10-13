@@ -255,17 +255,10 @@ class Handler(BaseHTTPRequestHandler):
         elif route == "/glide-api/start":
             (RUNTIME / "start").touch()
             self.reply(200, {"started": True})
-        elif route == "/glide-api/stop":
-            text = Path("/tmp/glide-launch.log").read_text(errors="replace") if Path("/tmp/glide-launch.log").exists() else ""
-            pids = re.findall(r"MINECRAFT_PID=(\d+)", text)
-            if pids and not (RUNTIME / 'signaled').exists():
-                try:
-                    os.kill(int(pids[-1]), signal.SIGTERM)
-                    (RUNTIME / 'signaled').touch()
-                except ProcessLookupError:
-                    pass
-            (RUNTIME / "stop").touch()
-            self.reply(200, {"stopping": True})
+        elif route in {"/glide-api/stop","/glide-api/force-stop"}:
+            from session_control import request_stop
+            request_stop(RUNTIME,force=route.endswith('force-stop'))
+            self.reply(200,{"stopping":True})
         else:
             self.reply(404, {"error": "Not found"})
 

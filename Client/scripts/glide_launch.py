@@ -449,6 +449,8 @@ if os.environ.get("GLIDE_INSTALL_ONLY") == "1":
     print("GLIDE_INSTALL_READY=true")
     raise SystemExit(0)
 
+from performance_defaults import apply_defaults
+apply_defaults(minecraft_dir,version)
 print("GLIDE_STAGE=minecraft-options")
 options = minecraft_launcher_lib.utils.generate_test_options()
 
