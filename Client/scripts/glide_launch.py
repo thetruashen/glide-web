@@ -183,8 +183,16 @@ except (OSError, ValueError):
     pass
 launch_version = cached.get("launch_version", "")
 profile_path = Path(minecraft_dir) / "versions" / launch_version / f"{launch_version}.json"
-# The previous installer produced identical game files; only account handoff changed.
-if cached.get("fingerprint") in {fingerprint,"f7bfc5f0914ff6cfa82bdda29a1ebe7c71888693da9e3c99c8f629cefccaf1a8","b9541a81088651a5d44ebeac071560a54cf1c9c6ce48c85f14f62e46aa6a73d5","287193cbd187727cee643e8a6f9012e0b0622e44f04540e915c4852956b9bc16"} and profile_path.is_file():
+# Auth/UI changes must not rerun Forge processors. Validate cached game identity.
+from launch_profile import components_for
+cache_valid=False
+if profile_path.is_file():
+    try:
+        components_for(minecraft_dir,launch_version,version,loader,os.environ.get("GLIDE_LOADER_VERSION",""))
+        cache_valid=True
+    except (ValueError,OSError):
+        pass
+if cache_valid:
     print("GLIDE_GAME_CACHE=hit")
 else:
     print("GLIDE_GAME_CACHE=miss")

@@ -27,6 +27,7 @@ class PinnedLoaderTests(unittest.TestCase):
                 marker=json.loads((Path(directory)/'.glide-install/1.21.1-neoforge.json').read_text())
                 self.assertEqual(marker['launch_version'],'neoforge-21.1.258')
                 self.assertEqual(marker['fingerprint'],hashlib.sha256(SCRIPT.with_name('glide_launch.py').read_bytes()).hexdigest())
+                marker['fingerprint']='previous-auth-screen-revision';(Path(directory)/'.glide-install/1.21.1-neoforge.json').write_text(json.dumps(marker))
                 with self.assertRaises(SystemExit) as exit_result: runpy.run_path(str(SCRIPT),run_name='__main__')
                 self.assertEqual(exit_result.exception.code,0)
                 self.assertEqual(loader.install.call_count,1)
