@@ -28,7 +28,7 @@ HOSTS = {'cdn.modrinth.com','edge.forgecdn.net','mediafilez.forgecdn.net','media
 
 @app.after_request
 def private_api(response):
-    if request.path.startswith('/api/'):
+    if request.path.startswith('/api/') and request.path!='/api/image':
         response.headers['Cache-Control'] = 'no-store'
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Referrer-Policy'] = 'no-referrer'
@@ -95,7 +95,7 @@ def microsoft_auth(operation):
 
 @app.get('/api/catalog/<provider>/<path:route>')
 def catalog(provider, route):
-    patterns = {'modrinth':r'(tag/category|tag/license|search|project/[A-Za-z0-9_-]+(?:/version)?|version/[A-Za-z0-9_-]+|version_file/[a-fA-F0-9]+)',
+    patterns = {'modrinth':r'(tag/category|tag/license|search|projects|project/[A-Za-z0-9_-]+(?:/version)?|version/[A-Za-z0-9_-]+|version_file/[a-fA-F0-9]+)',
                 'curseforge':r'(categories|mods/(search|[0-9]+(?:/description|/files(?:/[0-9]+(?:/download-url|/changelog)?)?)?))'}
     if provider not in patterns or not re.fullmatch(patterns[provider],route):
         return jsonify(error='Unsupported catalog request'), 400
@@ -112,6 +112,25 @@ def catalog(provider, route):
             try: params[name]=str(min(100,max(1,int(params[name]))))
             except ValueError: return jsonify(error='Invalid page size'),400
     result=requests.get(base+route,params=params,headers=headers,timeout=(10,30))
+    return Response(result.content,status=result.status_code,content_type='application/json')
+
+@app.get('/api/image')
+def image():
+    try:
+        try:from .image_proxy import allowed,load_image,cached_image
+        except ImportError:from image_proxy import allowed,load_image,cached_image
+        url=allowed(request.args.get('url',''))
+        body,mime=cached_image(url,int(time.time()/600)) or load_image(url)
+        return Response(body,content_type=mime,headers={'Cache-Control':'public, max-age=3600','Content-Security-Policy':"default-src 'none'; sandbox",'Cross-Origin-Resource-Policy':'cross-origin'})
+    except (ValueError,requests.RequestException):return jsonify(error='Image unavailable or unsupported'),400
+
+@app.post('/api/catalog/curseforge/mods')
+def bulk_projects():
+    ids=(request.get_json(silent=True) or {}).get('modIds')
+    if not isinstance(ids,list) or not 1<=len(ids)<=100 or any(type(v)!=int or v<=0 for v in ids):return jsonify(error='Invalid project list'),400
+    key=os.environ.get('CURSEFORGE_API_KEY')
+    if not key:return jsonify(error='CurseForge is not configured'),503
+    result=requests.post('https://api.curseforge.com/v1/mods',json={'modIds':ids},headers={'x-api-key':key},timeout=(10,30))
     return Response(result.content,status=result.status_code,content_type='application/json')
 
 @app.post('/api/catalog/curseforge/mods/files')
