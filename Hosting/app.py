@@ -1,5 +1,8 @@
 """Same-origin gateway for the compiled Next.js app. No world data is stored here."""
 import hmac
+import uuid
+try:from .runner_pool import pool,select_runner
+except ImportError:from runner_pool import pool,select_runner
 import os
 import re
 import time
@@ -36,7 +39,8 @@ def upstream_error(error):
     return jsonify(error='Upstream connection failed. Please retry.'), 502
 
 def configured():
-    return bool(app.secret_key and os.environ.get('GLIDE_ACCESS_CODE') and os.environ.get('GITHUB_ACTIONS_TOKEN'))
+    try:return bool(app.secret_key and pool())
+    except (ValueError,TypeError):return False
 
 def expected_origin():
     return os.environ.get('GLIDE_ORIGIN',request.host_url.rstrip('/'))
@@ -47,15 +51,16 @@ def same_origin():
 
 @app.get('/api/config')
 def config():
+    if configured():
+        session['authenticated']=True
+        session.setdefault('browser_id',os.urandom(16).hex());session.setdefault('sessions',[]);session.permanent=True
+        session.setdefault('launch_repos',{sid:REPO for sid in session.get('sessions',[])})
     return jsonify(microsoftClientId=os.environ.get('MICROSOFT_CLIENT_ID',''),hosted=True, authenticated=bool(session.get('authenticated') and configured()), playConfigured=configured(), repo=REPO)
 
 @app.post('/api/login')
 def login():
     if not same_origin(): return jsonify(error='Origin not allowed'), 403
     if not configured(): return jsonify(error='The administrator has not configured remote play yet.'), 503
-    code = str((request.get_json(silent=True) or {}).get('code', ''))
-    if not hmac.compare_digest(code.encode(), os.environ['GLIDE_ACCESS_CODE'].encode()):
-        return jsonify(error='Incorrect access code'), 401
     session.clear(); session['authenticated'] = True; session['browser_id']=os.urandom(16).hex(); session['sessions'] = []; session.permanent = True
     return jsonify(ok=True)
 
@@ -192,27 +197,43 @@ def download():
     if size:response.headers['X-File-Size']=str(segment or size)
     return response
 
-def gh(path,method='GET',body=None):
-    return requests.request(method,f'https://api.github.com/repos/{REPO}'+('/'+path if path else ''),
-        json=body,headers={'Authorization':'Bearer '+os.environ['GITHUB_ACTIONS_TOKEN'],
+def gh(path,method='GET',body=None,repo=None):
+    target=repo or REPO
+    credential=next((x for x in pool() if x['repo']==target),None)
+    if not credential:raise ValueError('Repository is not in the runner pool')
+    return requests.request(method,f'https://api.github.com/repos/{target}'+('/'+path if path else ''),
+        json=body,headers={'Authorization':'Bearer '+credential['token'],
         'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},timeout=(10,30))
 
-def owns_run(run):
-    return run.get('display_title') in ['Glide · '+v for v in session.get('sessions',[])]
+def owns_run(run,repo=None):
+    return run.get('display_title') in ['Glide · '+v for v in session.get('sessions',[]) if repo is None or session.get('launch_repos',{}).get(v,REPO)==repo]
+
+@app.post('/api/allocate')
+def allocate():
+    if not same_origin() or not configured() or not session.get('authenticated'):return jsonify(error='Invalid launch session'),401
+    if time.time()-session.get('last_dispatch',0)<30:return jsonify(error='Wait 30 seconds before launching again'),429
+    try:
+        selected=select_runner(lambda path,repo:gh(path,repo=repo),session.get('sessions',[]))
+        sid=str(uuid.uuid4())
+        assignments=session.get('launch_repos',{});assignments={key:assignments[key] for key in list(assignments)[-7:]};assignments[sid]=selected['repo'];session['launch_repos']=assignments
+        return jsonify(id=sid,repo=selected['repo'],branch=selected['branch'])
+    except ValueError as e:return jsonify(error=str(e)),503
 
 @app.post('/api/actions')
 def actions():
     if not same_origin() or not configured() or not session.get('authenticated'): return jsonify(error='Sign in to play'),401
     data=request.get_json(silent=True) or {};path=data.get('path','');method=data.get('method','GET');body=data.get('body')
-    if data.get('repo')!=REPO or not isinstance(path,str): return jsonify(error='Invalid repository'),400
-    if path=='': return jsonify(default_branch=BRANCH)
+    target=data.get('repo')
+    credential=next((x for x in pool() if x['repo']==target),None)
+    if not credential or not isinstance(path,str): return jsonify(error='Invalid repository'),400
+    if path=='': return jsonify(default_branch=credential['branch'])
     dispatch=re.fullmatch(r'actions/workflows/(glide-session.yml|catalog-download.yml)/dispatches',path)
     listing=re.fullmatch(r'actions/workflows/(glide-session.yml|catalog-download.yml)/runs\?event=workflow_dispatch&per_page=100',path)
     run=re.fullmatch(r'actions/runs/([0-9]+)(/jobs|/cancel)?',path)
     if dispatch and method=='POST':
         try:
             sid=body['inputs']['session_id']
-            if not re.fullmatch(r'[a-f0-9-]{36}',sid): raise ValueError()
+            if not re.fullmatch(r'[a-f0-9-]{36}',sid) or session.get('launch_repos',{}).get(sid)!=target or sid in session.get('sessions',[]):raise ValueError()
             import json
             settings=json.loads(body['inputs']['request'])
             if settings.get('origin')!=expected_origin() or len(body['inputs']['request'])>12000: raise ValueError()
@@ -221,17 +242,17 @@ def actions():
         # Signed cookies isolate each browser's launches; no global Actions proxy is exposed.
         if time.time()-session.get('last_dispatch',0)<30: return jsonify(error='Wait 30 seconds before another launch'),429
         sessions=session.get('sessions',[])[-7:]+[sid]
-        result=gh(path,'POST',{'ref':BRANCH,'inputs':body['inputs']})
+        result=gh(path,'POST',{'ref':credential['branch'],'inputs':body['inputs']},repo=target)
         if result.ok: session['sessions']=sessions;session['last_dispatch']=time.time()
     elif listing and method=='GET':
-        result=gh(path)
+        result=gh(path,repo=target)
         if result.ok:
-            runs=result.json();runs['workflow_runs']=[r for r in runs['workflow_runs'] if owns_run(r)]
+            runs=result.json();runs['workflow_runs']=[r for r in runs['workflow_runs'] if owns_run(r,target)]
             return jsonify(runs)
     elif run and ((method=='GET' and run[2]!='/cancel') or (method=='POST' and run[2]=='/cancel')):
-        check=gh('actions/runs/'+run[1])
-        if not check.ok or not owns_run(check.json()): return jsonify(error='Run is not owned by this browser'),403
-        result=check if not run[2] else gh(path,method,{} if method=='POST' else None)
+        check=gh('actions/runs/'+run[1],repo=target)
+        if not check.ok or not owns_run(check.json(),target): return jsonify(error='Run is not owned by this browser'),403
+        result=check if not run[2] else gh(path,method,{} if method=='POST' else None,repo=target)
     else: return jsonify(error='Unsupported Actions operation'),400
     return Response(result.content,status=result.status_code,content_type='application/json')
 

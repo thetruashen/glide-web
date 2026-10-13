@@ -27,7 +27,9 @@ export async function github(repo: string, path: string, token: string, body?: u
 }
 export async function launch(profile: Profile, repo: string, token: string): Promise<Session> {
   const keys = await crypto.subtle.generateKey({ name: 'RSA-OAEP', modulusLength: 3072, publicExponent: new Uint8Array([1,0,1]), hash: 'SHA-256' }, true, ['encrypt', 'decrypt']);
-  const session: Session = { id: crypto.randomUUID(), profileId: profile.id, repo, privateKey: await crypto.subtle.exportKey('jwk', keys.privateKey), created: Date.now() };
+  const allocation=token==='@server'?await fetch('/api/allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error);return d;}):undefined;
+  if(allocation)repo=allocation.repo;
+  const session: Session = { id: allocation?.id || crypto.randomUUID(), profileId: profile.id, repo, privateKey: await crypto.subtle.exportKey('jwk', keys.privateKey), created: Date.now() };
   const info = await github(repo, '', token);
   const request = { ...profile, publicKey: b64(await crypto.subtle.exportKey('spki', keys.publicKey)), origin: location.origin };
   persistSession(session);
@@ -74,7 +76,9 @@ export async function runner(session: Session, path: string, body?: Blob | strin
 export function streamURL(session: Session) { return `${session.url}/glide-api/login?ticket=${encodeURIComponent(session.secret || '')}`; }
 export async function launchDownloadHelper(repo: string, token: string): Promise<Session> {
   const keys = await crypto.subtle.generateKey({ name:'RSA-OAEP', modulusLength:3072, publicExponent:new Uint8Array([1,0,1]), hash:'SHA-256' },true,['encrypt','decrypt']);
-  const session: Session = { id:crypto.randomUUID(), profileId:'catalog', repo, privateKey:await crypto.subtle.exportKey('jwk',keys.privateKey), created:Date.now(), workflow:'catalog-download.yml' };
+  const allocation=token==='@server'?await fetch('/api/allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error);return d;}):undefined;
+  if(allocation)repo=allocation.repo;
+  const session: Session = { id:allocation?.id || crypto.randomUUID(), profileId:'catalog', repo, privateKey:await crypto.subtle.exportKey('jwk',keys.privateKey), created:Date.now(), workflow:'catalog-download.yml' };
   const info = await github(repo,'',token);
   await github(repo,'actions/workflows/catalog-download.yml/dispatches',token,{ref:info.default_branch,inputs:{session_id:session.id,request:JSON.stringify({publicKey:b64(await crypto.subtle.exportKey('spki',keys.publicKey)),origin:location.origin})}});
   persistSession(session); return session;

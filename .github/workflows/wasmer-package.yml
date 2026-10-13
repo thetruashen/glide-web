@@ -33,6 +33,7 @@ jobs:
           path: |
             Hosting/app.py
             Hosting/microsoft.py
+            Hosting/runner_pool.py
             Hosting/requirements.txt
             Hosting/public/
           retention-days: 7
