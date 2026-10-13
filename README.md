@@ -62,3 +62,12 @@ Reference: [Next.js static exports](https://nextjs.org/docs/app/guides/static-ex
 ## Hosted launcher
 
 The primary launcher is https://glide-thetruashen.wasmer.app. See [Hosting/README.md](Hosting/README.md) for deployment, private credentials, Microsoft device-code configuration, and portable instance backups. GitHub Pages remains a static fallback and requires tab-local credentials.
+
+
+### Gameplay boost
+
+Enabled per instance by default; turn it off in Play settings to compare or troubleshoot. The runner selects stable, exact game/loader releases of Sodium (Fabric/NeoForge) or Embeddium (Forge), FerriteCore, Lithium (Fabric/NeoForge), and ImmediatelyFast. It preserves existing renderer/simulation families, validates declared loader requirements and SHA-512 hashes, and skips unavailable or dependency-incompatible additions. No vanilla profile is converted to a mod loader.
+
+Runtime additions are kept out of browser snapshots only while their recorded hashes still match, so user-provided or edited files are preserved. JVM settings use balanced G1 without the former forced Java 21 ZGC / 50 ms pause target. The boost streams at 30 FPS and gives the software encoder lower scheduling priority to reserve CPU for game rendering and simulation. Turning it off restores 60 FPS streaming and the JVM default collector. Existing video settings are retained.
+
+This targets rendering, simulation and memory pressure; it does not guarantee a frame-rate increase on every pack. GPU-free Mesa rendering still limits large packs. Per-session performance-report.json records added/skipped mods privately. Sources: [Embeddium](https://github.com/FiniteReality/embeddium), [Lithium](https://github.com/CaffeineMC/lithium), [ImmediatelyFast](https://github.com/RaphiMC/ImmediatelyFast), [FerriteCore](https://github.com/malte0811/FerriteCore), [Java collector guidance](https://docs.oracle.com/en/java/javase/21/gctuning/available-collectors.html).

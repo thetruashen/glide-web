@@ -451,6 +451,10 @@ if os.environ.get("GLIDE_INSTALL_ONLY") == "1":
 
 from performance_defaults import apply_defaults
 apply_defaults(minecraft_dir,version)
+if os.environ.get('GLIDE_GAMEPLAY_PERFORMANCE','1')=='1':
+    from gameplay_performance import install
+    actual_loader=components_for(minecraft_dir,launch_version,version,loader,os.environ.get('GLIDE_LOADER_VERSION',''))
+    install(minecraft_dir,version,loader,actual_loader[-1]['version'],int(os.environ.get('GLIDE_JAVA_MAJOR','21')))
 print("GLIDE_STAGE=minecraft-options")
 options = minecraft_launcher_lib.utils.generate_test_options()
 
@@ -646,14 +650,10 @@ if not any(arg.startswith("-Dorg.lwjgl.librarypath=") for arg in command):
 
 command.insert(1, f"-Xmx{xmx}")
 command.insert(2, "-Xms512M")
-if int(os.environ.get("GLIDE_JAVA_MAJOR", "21")) < 21:
-    command.insert(3, "-XX:+UseG1GC")
-    command.insert(4, "-XX:MaxGCPauseMillis=50")
-    print("GLIDE_GC=G1")
-else:
-    command.insert(3, "-XX:+UseZGC")
-    print("GLIDE_GC=ZGC")
-command.insert(5 if int(os.environ.get("GLIDE_JAVA_MAJOR", "21")) < 21 else 4, "-XX:+DisableExplicitGC")
+if os.environ.get('GLIDE_GAMEPLAY_PERFORMANCE','1')=='1':
+    from gameplay_performance import java_flags
+    command[3:3]=java_flags()
+    print('GLIDE_GC=G1-balanced')
 command.extend(["--width", str(window_width), "--height", str(window_height)])
 
 print("MINECRAFT_COMMAND_READY=true")

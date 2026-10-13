@@ -67,12 +67,15 @@ def extract_archive(data, root):
 
 def snapshot():
     out = io.BytesIO()
+    from gameplay_performance import owned_mods
+    managed=owned_mods(RUNTIME,ROOT)
     with LOCK, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=1) as archive:
         for name in sorted(ALLOWED | FILES):
             path = ROOT / name
             paths = path.rglob("*") if path.is_dir() else [path]
             for child in paths:
                 if child.is_file() and not child.is_symlink():
+                    if child.relative_to(ROOT).as_posix() in managed:continue
                     archive.write(child, child.relative_to(ROOT))
     if out.tell() > MAX_BYTES:
         raise ValueError("Profile snapshot exceeds 4 GiB")

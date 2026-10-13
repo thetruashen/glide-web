@@ -104,6 +104,7 @@ jobs:
           Xvfb :99 -screen 0 "${GLIDE_RENDER_WIDTH}x${GLIDE_RENDER_HEIGHT}x24" -ac +extension GLX +extension RANDR >/tmp/glide-xorg.log 2>&1 &
           for i in $(seq 1 30); do xdpyinfo -display :99 >/dev/null 2>&1 && break; sleep 1; done
           xdpyinfo -display :99 >/dev/null
+          glxinfo -B | grep -E 'OpenGL (vendor|renderer|version)' || true
           xset -display :99 m 0 0
           dwm >/tmp/glide-dwm.log 2>&1 &
           export XDG_RUNTIME_DIR=/tmp/glide-runtime
@@ -124,7 +125,9 @@ jobs:
             echo "GLIDE_PULSE_SINK=glide_game_sink"
             echo "GLIDE_PULSE_SOURCE=glide_game_sink.monitor"
           } >> "$GITHUB_ENV"
-          selkies --public --port=8080 --mode=websockets --enable-https=false --basic-auth-user=glide --basic-auth-password="$GLIDE_SELKIES_PASSWORD" --encoder=h264enc --enable-resize=true --raw-pointer-motion=true --video-framerate=60 --video-bitrate=8000 --congestion-control >/tmp/glide-selkies.log 2>&1 &
+          STREAM_NICE=0
+          if [ "$GLIDE_GAMEPLAY_PERFORMANCE" = "1" ]; then STREAM_NICE=5; fi
+          nice -n "$STREAM_NICE" selkies --public --port=8080 --mode=websockets --enable-https=false --basic-auth-user=glide --basic-auth-password="$GLIDE_SELKIES_PASSWORD" --encoder=h264enc --enable-resize=true --raw-pointer-motion=true --video-framerate="$GLIDE_STREAM_FPS" --video-bitrate=8000 --congestion-control >/tmp/glide-selkies.log 2>&1 &
           for i in $(seq 1 60); do curl -fsS -u "glide:$GLIDE_SELKIES_PASSWORD" http://127.0.0.1:8080/ >/dev/null 2>&1 && break; sleep 1; done
           curl -fsS -u "glide:$GLIDE_SELKIES_PASSWORD" http://127.0.0.1:8080/ >/dev/null
       - name: Start authenticated profile API and streaming gateway

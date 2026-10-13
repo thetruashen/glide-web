@@ -35,6 +35,9 @@ def prepare_profile(work,game,launch_version):
     # Normal defaults only: leave Prism's account/consent page to the player.
     (work/'prismlauncher.cfg').write_text(f'[General]\nLanguage=en_US\nJavaPath={shutil.which("java")}\nLastHostname={socket.gethostname()}\nAutomaticJavaSwitch=false\nAutomaticJavaDownload=false\nUserAskedAboutAutomaticJavaDownload=true\nApplicationTheme=dark\nIconTheme=pe_colored\n')
     (instance/'instance.cfg').write_text(f'[General]\nInstanceType=OneSix\niconKey=pigmc\nname={name}\nOverrideJavaLocation=true\nJavaPath={shutil.which("java")}\nOverrideMemory=true\nMinMemAlloc=512\nMaxMemAlloc={megabytes}\n')
+    if os.environ.get('GLIDE_GAMEPLAY_PERFORMANCE','1')=='1':
+        from gameplay_performance import java_flags
+        with (instance/'instance.cfg').open('a') as config:config.write('OverrideJavaArgs=true\nJvmArgs='+ ' '.join(java_flags())+'\n')
     (instance/'mmc-pack.json').write_text(json.dumps({'formatVersion':1,'components':components}))
 
 def find_game_pid(game):

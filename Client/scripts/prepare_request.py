@@ -44,6 +44,8 @@ settings = {
     "GLIDE_RENDER_HEIGHT": str(max(360, min(int(config.get("height", 720)), 1080))),
     "GLIDE_MAX_RESTARTS": "0",
     "GLIDE_LOADER_VERSION": loader_version,
+    "GLIDE_GAMEPLAY_PERFORMANCE": "0" if config.get('performance') is False else "1",
+    "GLIDE_STREAM_FPS": "60" if config.get('performance') is False else "30",
 }
 with open(os.environ["GITHUB_ENV"], "a") as env:
     for key, value in settings.items():
