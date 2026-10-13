@@ -29,7 +29,7 @@ if origin.scheme not in {"https", "http"} or not origin.netloc or origin.path no
 if not 256 <= len(base64.b64decode(config["publicKey"], validate=True)) <= 1024:
     raise ValueError("Invalid public key")
 auth = config.get("auth", "offline")
-if auth not in {"offline", "microsoft"}:
+if auth not in {"offline", "microsoft", "prompt"}:
     raise ValueError("Invalid account mode")
 client_id = config.get("clientId", "")
 if auth == "microsoft" and client_id and not re.fullmatch(r"[0-9a-fA-F-]{36}", client_id):

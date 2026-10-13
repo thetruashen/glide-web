@@ -19,15 +19,13 @@ def prepare_profile(work,game,launch_version):
     for name in ('assets','libraries'):
         destination=work/name
         if not destination.exists():destination.symlink_to(game/name,target_is_directory=True)
-    installed=json.loads((game/'versions'/launch_version/f'{launch_version}.json').read_text())
-    components=[{'uid':'net.minecraft','version':installed.get('inheritsFrom',launch_version),'important':True}]
-    coordinates={'net.minecraftforge:forge:':'net.minecraftforge','net.neoforged:neoforge:':'net.neoforged','net.fabricmc:fabric-loader:':'net.fabricmc.fabric-loader','org.quiltmc:quilt-loader:':'org.quiltmc.quilt-loader'}
-    for library in installed.get('libraries',[]):
-        for prefix,uid in coordinates.items():
-            if library.get('name','').startswith(prefix):
-                version=library['name'][len(prefix):].split(':')[0]
-                if uid=='net.minecraftforge':version=version.split('-',1)[-1]
-                components.append({'uid':uid,'version':version})
+    from launch_profile import components_for
+    version=os.environ.get('GLIDE_MINECRAFT_VERSION')
+    if not version:
+        installed=json.loads((game/'versions'/launch_version/f'{launch_version}.json').read_text())
+        version=installed.get('inheritsFrom',launch_version)
+    loader=os.environ.get('GLIDE_MINECRAFT_LOADER','forge' if '-forge-' in launch_version else 'vanilla')
+    components=components_for(game,launch_version,version,loader,os.environ.get('GLIDE_LOADER_VERSION',''))
     instance=work/'instances'/'glide';instance.mkdir(parents=True,exist_ok=True)
     if not (instance/'.minecraft').exists():(instance/'.minecraft').symlink_to(game,target_is_directory=True)
     memory=os.environ.get('GLIDE_MINECRAFT_XMX','4G').upper()

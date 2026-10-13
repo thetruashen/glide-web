@@ -18,7 +18,7 @@ try:
 except (OSError, ValueError):
     existing = {}
 target = mod_loader.get_installed_version(version, loader_version)
-if existing.get('fingerprint') in {fingerprint,'b9541a81088651a5d44ebeac071560a54cf1c9c6ce48c85f14f62e46aa6a73d5','287193cbd187727cee643e8a6f9012e0b0622e44f04540e915c4852956b9bc16'} and existing.get('launch_version') == target and (Path(directory) / 'versions' / target / f'{target}.json').is_file():
+if existing.get('fingerprint') in {fingerprint,'f7bfc5f0914ff6cfa82bdda29a1ebe7c71888693da9e3c99c8f629cefccaf1a8','b9541a81088651a5d44ebeac071560a54cf1c9c6ce48c85f14f62e46aa6a73d5','287193cbd187727cee643e8a6f9012e0b0622e44f04540e915c4852956b9bc16'} and existing.get('launch_version') == target and (Path(directory) / 'versions' / target / f'{target}.json').is_file():
     print('GLIDE_PINNED_LOADER_CACHE=hit')
     raise SystemExit(0)
 if loader_version not in mod_loader.get_loader_versions(version, False):

@@ -184,7 +184,7 @@ except (OSError, ValueError):
 launch_version = cached.get("launch_version", "")
 profile_path = Path(minecraft_dir) / "versions" / launch_version / f"{launch_version}.json"
 # The previous installer produced identical game files; only account handoff changed.
-if cached.get("fingerprint") in {fingerprint,"b9541a81088651a5d44ebeac071560a54cf1c9c6ce48c85f14f62e46aa6a73d5","287193cbd187727cee643e8a6f9012e0b0622e44f04540e915c4852956b9bc16"} and profile_path.is_file():
+if cached.get("fingerprint") in {fingerprint,"f7bfc5f0914ff6cfa82bdda29a1ebe7c71888693da9e3c99c8f629cefccaf1a8","b9541a81088651a5d44ebeac071560a54cf1c9c6ce48c85f14f62e46aa6a73d5","287193cbd187727cee643e8a6f9012e0b0622e44f04540e915c4852956b9bc16"} and profile_path.is_file():
     print("GLIDE_GAME_CACHE=hit")
 else:
     print("GLIDE_GAME_CACHE=miss")
@@ -433,6 +433,10 @@ else:
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text(json.dumps({"fingerprint": fingerprint, "launch_version": launch_version}))
 
+from launch_profile import components_for
+components_for(minecraft_dir,launch_version,version,loader,os.environ.get("GLIDE_LOADER_VERSION",""))
+print(f"GLIDE_VERIFIED_PROFILE={version}/{loader}/{launch_version}",flush=True)
+
 if os.environ.get("GLIDE_INSTALL_ONLY") == "1":
     print("GLIDE_INSTALL_READY=true")
     raise SystemExit(0)
@@ -441,6 +445,11 @@ print("GLIDE_STAGE=minecraft-options")
 options = minecraft_launcher_lib.utils.generate_test_options()
 
 auth_mode = os.environ.get("GLIDE_AUTH_MODE", "offline").strip().lower()
+if auth_mode == "prompt":
+    from launch_login import choose_account
+    print("GLIDE_STAGE=choose-account",flush=True)
+    auth_mode,username=choose_account(os.environ.get("GLIDE_INSTANCE_NAME","My instance"),version,loader)
+    if username:os.environ["GLIDE_OFFLINE_USERNAME"]=username
 if auth_mode == "microsoft":
     client_id = os.environ.get("GLIDE_MICROSOFT_CLIENT_ID", "").strip()
     if not client_id:
