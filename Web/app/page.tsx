@@ -44,6 +44,8 @@ export default function Home() {
   const [accessCode,setAccessCode]=useState('');
   const [microsoftClientId,setMicrosoftClientId]=useState('');
   const [instanceTab,setInstanceTab]=useState<'content'|'settings'|'backups'>('content');
+  const [streamDetached,setStreamDetached]=useState(false);
+  const forceRequested=useRef(false);
   const [streamRevision,setStreamRevision]=useState(0);
   const screen = useRef<HTMLDivElement>(null);
   const polling = useRef(false);
@@ -165,7 +167,7 @@ export default function Home() {
   async function start(profileToLaunch = profile) {
     if (!profileToLaunch || busy || session || catalogBusy) return;
     setProfile(profileToLaunch); setMods(await getMods(profileToLaunch.id));
-    setError(''); setStopRequested(false); setBusy(true);
+    setError(''); setStopRequested(false);forceRequested.current=false;setStreamDetached(false); setBusy(true);
     try {
       if (!token.trim()) { setShowConnection(true); throw new Error(hosted?'Sign in with the launcher access code to play.':'Enter a repository-scoped GitHub token with Actions read/write access.'); }
       const incompatible = (await getMods(profileToLaunch.id)).find(m => (m.gameVersion && m.gameVersion !== profileToLaunch.version) || (m.loader && m.loader !== profileToLaunch.loader));
@@ -196,6 +198,7 @@ export default function Home() {
         setMessage('Stopping Minecraft and waiting for its final save…');
         let finished = false;
         for (let attempt = 0; attempt < 30; attempt++) {
+          if(forceRequested.current)return;
           const current: Status = await (await runner(session, 'status')).json();
           if (current.finished || !current.started) { finished = true; break; }
           await new Promise(resolve => setTimeout(resolve, 2000));
@@ -209,10 +212,11 @@ export default function Home() {
       await github(s.repo, `actions/runs/${s.runId}/cancel`, token, {}, 'POST');
       sessionStorage.removeItem('glide-session'); setSession(undefined); setStatus(undefined);
       setMessage('Saved locally. The runner has been stopped.');
-    } catch (e) { setError(String(e)); } finally { setBusy(false); stopping.current = false; }
+    } catch (e) { if(!forceRequested.current)setError(String(e)); } finally { setBusy(false); stopping.current = false; }
   }
   async function forceStop() {
     if(!session)return;
+    forceRequested.current=true;
     try { if(session.url)await runner(session,"force-stop","{}"); if(session.runId)await github(session.repo,`actions/runs/${session.runId}/cancel`,token,{},"POST"); sessionStorage.removeItem("glide-session");setSession(undefined);setStatus(undefined);setBusy(false);setMessage("Session force stopped. Your last browser backup is preserved."); } catch(e){setError(String(e));}
   }
   async function uploadMods(files: FileList | null) {
@@ -236,7 +240,7 @@ export default function Home() {
   async function fullscreen() {
     try {
       await screen.current?.requestFullscreen({ navigationUI: 'hide' });
-      setStreamRevision(n=>n+1);
+      setStreamDetached(false);setStreamRevision(n=>n+1);
       const keyboard = (navigator as Navigator & { keyboard?: { lock(keys: string[]): Promise<void> } }).keyboard;
       if (keyboard?.lock) {
         try { await keyboard.lock(['Escape']); } catch { /* Fullscreen remains usable when keyboard permission is declined. */ }
@@ -285,7 +289,7 @@ export default function Home() {
         {showConnection && hosted && token && <section className="panel connection"><h3>Connected</h3><p>This browser is signed in. Your data stays on this device.</p><button disabled={editingLocked} onClick={async()=>{const r=await fetch('/api/logout',{method:'POST'});if(r.ok){setToken('');setShowConnection(false);}}}>Sign out</button></section>}
         {showConnection && hosted && !token && <section className="panel connection"><h3>Sign in to play</h3><p>Enter the launcher access code once. This device stays signed in for 30 days.</p><form onSubmit={async e=>{e.preventDefault();try{const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:accessCode})});if(!r.ok)throw new Error('Incorrect access code.');setToken('@server');setAccessCode('');setShowConnection(false);}catch(e){setError(String(e));}}}><label>Launcher access code<input type="password" autoComplete="current-password" value={accessCode} onChange={e=>setAccessCode(e.target.value)}/></label><button className="primary">Sign in</button></form></section>}
         {mode==='eagler'?<EaglerBrowser/>:<>
-        {session?.url && <section className="panel player-panel"><div className="panel-title"><h3>Your session</h3><div className="inline-actions"><button onClick={fullscreen}><Maximize size={16}/> Fullscreen</button><a className="button-link" href={streamURL(session)} target="_blank" rel="noreferrer">Open stream ↗</a><button disabled={busy} onClick={stop}>Save & stop</button>{stopRequested&&<button onClick={forceStop}>Force stop</button>}</div></div><p>Use the stream’s Gaming Mode to capture your mouse and keyboard. Hold Escape to leave fullscreen when supported. If embedded playback is blocked, open the stream in a new tab.</p>{status?.MICROSOFT_LOGIN_CODE && status.stage === 'microsoft-login' && <div className="notice">Microsoft sign-in: <a href={status.MICROSOFT_LOGIN_URL} target="_blank" rel="noreferrer">Open Microsoft</a> and enter <strong>{status.MICROSOFT_LOGIN_CODE}</strong></div>}<div className="player" ref={screen}><iframe key={streamRevision} title="pigmc Minecraft stream" src={streamURL(session)} allow="fullscreen; autoplay; clipboard-read; clipboard-write" allowFullScreen sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups allow-downloads" referrerPolicy="no-referrer"/></div><small>Live snapshots sync every minute. Use Save & stop for a final save after Minecraft exits.</small></section>}
+        {session?.url && <section className="panel player-panel"><div className="panel-title"><h3>Your session</h3><div className="inline-actions"><button onClick={fullscreen}><Maximize size={16}/> Fullscreen</button><a className="button-link" onClick={()=>setStreamDetached(true)} href={streamURL(session)} target="_blank" rel="noreferrer">Open stream ↗</a><button disabled={busy} onClick={stop}>Save & stop</button>{stopRequested&&<button onClick={forceStop}>Force stop</button>}</div></div><p>Use the stream’s Gaming Mode to capture your mouse and keyboard. Hold Escape to leave fullscreen when supported. If embedded playback is blocked, open the stream in a new tab.</p>{status?.MICROSOFT_LOGIN_CODE && status.stage === 'microsoft-login' && <div className="notice">Microsoft sign-in: <a href={status.MICROSOFT_LOGIN_URL} target="_blank" rel="noreferrer">Open Microsoft</a> and enter <strong>{status.MICROSOFT_LOGIN_CODE}</strong></div>}<div className="player" ref={screen}>{streamDetached?<button className="resume-stream" onClick={()=>{setStreamDetached(false);setStreamRevision(n=>n+1);}}>Resume stream here</button>:<iframe key={streamRevision} title="pigmc Minecraft stream" src={streamURL(session)} allow="fullscreen; autoplay; clipboard-read; clipboard-write" allowFullScreen sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups allow-downloads" referrerPolicy="no-referrer"/>}</div><small>Live snapshots sync every minute. Use Save & stop for a final save after Minecraft exits.</small></section>}
         {running && status?.stage!=='minecraft-running' && <ProgressPanel value={launchProgress}><button disabled={busy} onClick={stop}>{session?.url?'Save & stop':'Cancel launch'}</button></ProgressPanel>}
         {view !== 'home' && view !== 'instances' && view !== 'settings' && view !== 'account' && profile && <ContentBrowser key={view} profile={profile} type={view} locked={running} initialProject={catalogSelection} initialQuery={catalogQuery} downloadRepo={repo} actionsToken={token} onInstalled={contentInstalled} onWorking={setCatalogBusy}/>}
         {(view === 'home' || view === 'instances' || view === 'settings') && <>
