@@ -1,6 +1,6 @@
 # Backend performance ideas — proposals only
 
-No backend optimizations were applied with this UI update.
+These began as proposals during the UI update. Gameplay boost now implements compatible runtime performance mods, balanced JVM settings, lower-priority 30 FPS encoding, a fixed 960×540 render cap, and lower-cost live snapshots. Prepackaged runtimes and GPU hosting remain proposals; see README.md for the implemented behavior.
 
 1. **Measure each stage first.** Separate runner queue time, cache restore, apt installation, loader preparation, instance transfer, Minecraft startup and world entry. Compare cold and warm launches. Measure game frame time, simulation tick time, memory and encoder CPU separately.
 2. **Prepackage the runtime.** Evaluate a tested image with desktop, audio, streaming and launcher dependencies already installed. The current workflow installs these through apt on each fresh runner. Validate container display/audio permissions before changing the deployment.
