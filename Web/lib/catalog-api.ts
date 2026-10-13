@@ -61,10 +61,10 @@ export async function searchProjects(search: Search, signal?: AbortSignal): Prom
 export async function getProject(provider: Provider, id: string): Promise<Project> {
   return provider === 'modrinth' ? mrProject(await api(provider, `/project/${encodeURIComponent(id)}`)) : cfProject((await api(provider, `/mods/${encodeURIComponent(id)}`)).data);
 }
-export async function projectIcons(provider:Provider,ids:string[]):Promise<Record<string,string>>{
+export async function projectIcons(provider:Provider,ids:string[],onBatch?:(icons:Record<string,string>)=>void):Promise<Record<string,string>>{
  const result:Record<string,string>={};
- for(let offset=0;offset<ids.length;offset+=100){const batch=ids.slice(offset,offset+100);const data=provider==='modrinth'?await api(provider,`/projects?ids=${encodeURIComponent(JSON.stringify(batch))}`):(await api(provider,'/mods',undefined,{modIds:batch.map(Number)})).data;
- for(const raw of data){const project=provider==='modrinth'?mrProject(raw):cfProject(raw);if(project.icon)result[project.id]=project.icon;}}
+ for(let offset=0;offset<ids.length;offset+=50){try{const batch=ids.slice(offset,offset+50);const data=provider==='modrinth'?await api(provider,`/projects?ids=${encodeURIComponent(JSON.stringify(batch))}`):(await api(provider,'/mods',undefined,{modIds:batch.map(Number)})).data;
+ for(const raw of data){const icon=provider==='modrinth'?raw.icon_url:raw.logo?.url||raw.logo?.thumbnailUrl;if(icon)result[String(raw.id)]=icon;}onBatch?.({...result});}catch{}}
  return result;
 }
 export async function getDescription(project: Project): Promise<string> {

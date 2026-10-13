@@ -112,6 +112,8 @@ def catalog(provider, route):
             try: params[name]=str(min(100,max(1,int(params[name]))))
             except ValueError: return jsonify(error='Invalid page size'),400
     result=requests.get(base+route,params=params,headers=headers,timeout=(10,30))
+    if provider=='modrinth' and route=='projects' and result.ok:
+        return jsonify([{'id':p['id'],'icon_url':p.get('icon_url')} for p in result.json()])
     return Response(result.content,status=result.status_code,content_type='application/json')
 
 @app.get('/api/image')
@@ -131,6 +133,7 @@ def bulk_projects():
     key=os.environ.get('CURSEFORGE_API_KEY')
     if not key:return jsonify(error='CurseForge is not configured'),503
     result=requests.post('https://api.curseforge.com/v1/mods',json={'modIds':ids},headers={'x-api-key':key},timeout=(10,30))
+    if result.ok:return jsonify(data=[{'id':p['id'],'logo':p.get('logo')} for p in result.json().get('data',[])])
     return Response(result.content,status=result.status_code,content_type='application/json')
 
 @app.post('/api/catalog/curseforge/mods/files')
