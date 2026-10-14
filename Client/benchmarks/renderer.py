@@ -46,7 +46,11 @@ try:
             if saves.resolve().parent!=ROOT.resolve() or saves.is_symlink():raise RuntimeError('Unsafe benchmark fixture path')
             shutil.rmtree(saves)
         with zipfile.ZipFile(Path(__file__).with_name('generated-world.zip')) as fixture:fixture.extractall(ROOT)
-        (ROOT/'options.txt').write_text('pauseOnLostFocus:false\nonboardAccessibility:false\nskipMultiplayerWarning:true\nenableVsync:false\nrenderDistance:4\nsimulationDistance:6\nentityDistanceScaling:0.75\nao:false\nentityShadows:false\nparticles:2\nmipmapLevels:0\ngraphicsMode:0\nrenderClouds:false\nbiomeBlendRadius:0\nmaxFps:60\n')
+        (ROOT/'options.txt').write_text('pauseOnLostFocus:false\nonboardAccessibility:false\nskipMultiplayerWarning:true\nenableVsync:false\nrenderDistance:4\nsimulationDistance:6\nentityDistanceScaling:0.75\nao:false\nentityShadows:false\nparticles:2\nmipmapLevels:0\ngraphicsMode:0\nrenderClouds:false\nbiomeBlendRadius:0\nmaxFps:260\n')
+        # apply_defaults must not reinstate the normal player's 60 FPS cap:
+        # this generated fixture measures available rendering headroom only.
+        (ROOT/'config').mkdir(exist_ok=True)
+        (ROOT/'config'/'pigmc-performance.json').write_text('{"applied":true,"preset":"benchmark-only"}')
         env={**os.environ,**settings,'MANGOHUD_CONFIG':f'no_display,output_folder={folder.resolve()},autostart_log=30,log_duration=30,log_interval=0,permit_upload=0','MANGOHUD_DLSYM':'1'}
         for key in ('LP_NUM_THREADS','LP_NATIVE_VECTOR_WIDTH'):
             if key not in settings:env.pop(key,None)

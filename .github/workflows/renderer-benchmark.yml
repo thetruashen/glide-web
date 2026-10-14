@@ -17,7 +17,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: renderer-benchmark
+  group: renderer-benchmark-${{ inputs.loader }}
   cancel-in-progress: false
 jobs:
   benchmark:
