@@ -6,7 +6,7 @@ import { safePath } from './profile-paths';
 export type Profile = { id: string; name: string; version: string; loader: string; loaderVersion?: string; memory: number; width: number; height: number; username: string; auth: string; clientId: string; performance?: boolean; updated?: number; pack?: { provider: string; projectId: string; versionId: string; title: string; icon?: string } };
 export type Mod = { name: string; blob: Blob; provider?: string; projectId?: string; versionId?: string; title?: string; gameVersion?: string; loader?: string };
 const db = () => openDB('glide-browser', 1, { upgrade(db) { db.createObjectStore('profiles', { keyPath: 'id' }); db.createObjectStore('files'); } });
-export const newProfile = (): Profile => ({ id: crypto.randomUUID(), name: 'My instance', version: '1.21.1', loader: 'neoforge', memory: 4, width: 1280, height: 720, username: 'GlidePlayer', auth: 'offline', clientId: '', performance:true });
+export const newProfile = (): Profile => ({ id: crypto.randomUUID(), name: 'My instance', version: '1.21.1', loader: 'neoforge', memory: 4, width: 1280, height: 720, username: 'GlidePlayer', auth: 'offline', clientId: '', performance:false });
 export async function profiles(): Promise<Profile[]> { return (await db()).getAll('profiles'); }
 export async function saveProfile(profile: Profile) { await (await db()).put('profiles', profile); }
 export async function getMods(id: string): Promise<Mod[]> { return await (await db()).get('files', `${id}:mods`) || []; }
@@ -61,7 +61,7 @@ export async function importProfile(id: string, blob: Blob) {
     const data=JSON.parse(await (await entryBlob(entry)).text()),p=data.profile;
     if(data.format!==1 || !p || !/^[\w.+-]{1,80}$/.test(p.version) || !['vanilla','fabric','forge','neoforge','quilt'].includes(p.loader) || typeof p.name!=='string' || p.name.length>80 || !/^[A-Za-z0-9_]{3,16}$/.test(p.username) || ![2,3,4,6,8].includes(p.memory) || !['854x480','1280x720','1600x900','1920x1080'].includes(`${p.width}x${p.height}`))throw new Error('Invalid instance settings in backup.');
     if(p.loaderVersion && !/^[\w.+-]{1,80}$/.test(p.loaderVersion))throw new Error('Invalid pinned loader.');
-    profile={...profile,name:p.name,version:p.version,loader:p.loader,loaderVersion:p.loaderVersion,memory:p.memory,width:p.width,height:p.height,username:p.username,auth:p.auth==='microsoft'?'microsoft':'offline',clientId:typeof p.clientId==='string'?p.clientId:'',pack:p.pack,performance:p.performance!==false};
+    profile={...profile,name:p.name,version:p.version,loader:p.loader,loaderVersion:p.loaderVersion,memory:p.memory,width:p.width,height:p.height,username:p.username,auth:p.auth==='microsoft'?'microsoft':'offline',clientId:typeof p.clientId==='string'?p.clientId:'',pack:p.pack,performance:false};
     metadata=Array.isArray(data.mods)?data.mods:[];
   }
   const mods: Mod[] = [];

@@ -1,6 +1,6 @@
 # Backend performance ideas — no new changes applied
 
-Automatic performance-mod installation has been removed. The mod catalog and player-installed files remain available. Existing Java, render-cap, stream-priority and snapshot settings remain unchanged. The following are proposals only, with no automatic mod additions.
+Automatic performance-mod installation has been removed. The mod catalog and player-installed files remain available. Experimental Java flags, render caps, stream/API priority changes and snapshot compression changes have been turned off at the user’s request. Renderer benchmarks are tooling only; no Mesa preset or shader-cache experiment is enabled. The following are proposals only, with no automatic mod additions.
 
 Previous live testing identified LLVMpipe CPU rendering on a four-core runner. This is evidence about that runner, not a controlled benchmark across all packs. Separate frame time, chunk generation, simulation, garbage collection and background work before choosing changes.
 

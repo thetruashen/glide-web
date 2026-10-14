@@ -64,6 +64,16 @@ class ProfileTests(unittest.TestCase):
                 def request(path, data=None, token='private-session-capability'):
                     return urlopen(Request(origin + '/glide-api/' + path, data=data, headers={'Authorization': 'Bearer ' + token, 'Origin': 'https://example.com'}), timeout=5)
                 try:
+                    # The in-stream click handler can load with the stream cookie,
+                    # but that cookie must not authorize reading the profile.
+                    from http.client import HTTPConnection
+                    connection=HTTPConnection('127.0.0.1',server.server_port,timeout=5)
+                    connection.request('GET','/glide-api/player.js',headers={'Cookie':'glide_session=private-session-capability'})
+                    response=connection.getresponse();self.assertEqual(response.status,200);self.assertIn(b'requestPointerLock',response.read())
+                    connection.request('GET','/glide-api/profile',headers={'Cookie':'glide_session=private-session-capability'})
+                    response=connection.getresponse();self.assertEqual(response.status,401);response.read()
+                    connection.request('GET','/glide-api/login?ticket=private-session-capability')
+                    response=connection.getresponse();self.assertEqual(response.status,302);self.assertIn('manual_resolution=true',response.getheader('Location'));self.assertIn('scaleLocallyManual=true',response.getheader('Location'));response.read();connection.close()
                     with self.assertRaises(HTTPError) as denied:
                         request('status', token='another-player')
                     self.assertEqual(denied.exception.code, 401)

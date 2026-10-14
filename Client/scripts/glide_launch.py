@@ -646,10 +646,6 @@ if not any(arg.startswith("-Dorg.lwjgl.librarypath=") for arg in command):
 
 command.insert(1, f"-Xmx{xmx}")
 command.insert(2, "-Xms512M")
-if os.environ.get('GLIDE_GAMEPLAY_PERFORMANCE','1')=='1':
-    from gameplay_performance import java_flags
-    command[3:3]=java_flags()
-    print('GLIDE_GC=G1-balanced')
 command.extend(["--width", str(window_width), "--height", str(window_height)])
 
 print("MINECRAFT_COMMAND_READY=true")

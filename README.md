@@ -64,12 +64,8 @@ Reference: [Next.js static exports](https://nextjs.org/docs/app/guides/static-ex
 The primary launcher is https://glide-thetruashen.wasmer.app. See [Hosting/README.md](Hosting/README.md) for deployment, private credentials, Microsoft device-code configuration, and portable instance backups. GitHub Pages remains a static fallback and requires tab-local credentials.
 
 
-### Gameplay boost
+### Stream controls and performance
 
-Enabled per instance by default; turn it off in Play settings to compare or troubleshoot. No mods are installed automatically. Players manage their own mods through the existing catalog and instance content pages.
+Experimental gameplay tuning is disabled for every new session, including profiles that previously enabled it. The selected instance resolution is preserved, streaming uses 60 FPS, Java uses its default collector, and encoder/API scheduling priorities are unchanged. No performance mods are installed automatically. Previously requested baseline Minecraft video defaults are retained, as are player changes made afterward.
 
-JVM settings use balanced G1 without the former forced Java 21 ZGC / 50 ms pause target. The boost streams at 30 FPS and gives the software encoder lower scheduling priority to reserve CPU for game rendering and simulation. Turning it off restores 60 FPS streaming and the JVM default collector. Existing video settings are retained.
-
-The boost caps the physical render surface at 960×540 and prevents browser/fullscreen resizing from increasing it. Fullscreen scales the resulting video. Live snapshots store already-compressed JAR/ZIP/media bytes directly rather than recompressing them, and the backup API runs at lower scheduling priority. Legacy runtime-owned additions remain excluded from snapshots only while their recorded hashes match; user-provided or edited files are preserved.
-
-These measures do not guarantee a frame-rate increase on every pack. CPU-based Mesa rendering still limits large packs. Further changes are proposals in [BACKEND-PERFORMANCE-IDEAS.md](BACKEND-PERFORMANCE-IDEAS.md).
+Fullscreen keeps the existing stream iframe connected. The stream renders at the selected instance resolution and scales locally to fit the viewport without restarting the server encoder. Clicking the game surface captures the pointer through Selkies' existing relative-input handler; Escape releases it. Mod catalogs, installed content and account flows are unchanged.

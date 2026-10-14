@@ -76,10 +76,7 @@ def snapshot():
             for child in paths:
                 if child.is_file() and not child.is_symlink():
                     if child.relative_to(ROOT).as_posix() in managed:continue
-                    # These formats are already compressed; deflating them again burns
-                    # game CPU every live checkpoint without useful size savings.
-                    packed=child.suffix.lower() in {'.jar','.zip','.png','.jpg','.jpeg','.webp','.ogg','.mp3','.mp4','.gz','.zst'}
-                    archive.write(child, child.relative_to(ROOT),compress_type=zipfile.ZIP_STORED if packed else zipfile.ZIP_DEFLATED)
+                    archive.write(child, child.relative_to(ROOT))
     if out.tell() > MAX_BYTES:
         raise ValueError("Profile snapshot exceeds 4 GiB")
     return out.getvalue()
@@ -126,15 +123,21 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.send_response(302)
             self.send_header("Set-Cookie", f"glide_session={token}; Path=/; Secure; HttpOnly; SameSite=None; Partitioned; Max-Age=21600")
-            self.send_header("Location", "/")
+            width=max(640,min(int(os.environ.get('GLIDE_RENDER_WIDTH','1280')),1920))
+            height=max(360,min(int(os.environ.get('GLIDE_RENDER_HEIGHT','720')),1080))
+            self.send_header("Location", f"/?manual_resolution=true&manual_width={width}&manual_height={height}&scaleLocallyManual=true&useCssScaling=true")
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             return
-        if (route.path != '/glide-api/check' and not self.headers.get('Authorization', '').startswith('Bearer ')) or not self.authorized():
+        if (route.path not in {'/glide-api/check','/glide-api/player.js'} and not self.headers.get('Authorization', '').startswith('Bearer ')) or not self.authorized():
             self.reply(401, {"error": "Unauthorized"})
             return
-        if route.path == "/glide-api/check":
+        if route.path == '/glide-api/player.js':
+            data=(Path(__file__).resolve().parents[1]/'assets'/'player.js').read_bytes()
+            self.headers_out(200,'text/javascript; charset=utf-8',len(data))
+            self.wfile.write(data)
+        elif route.path == "/glide-api/check":
             self.headers_out(204, size=0)
         elif route.path == "/glide-api/status":
             log = Path("/tmp/glide-launch.log")

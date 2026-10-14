@@ -6,3 +6,9 @@
 :root{--accent:#e9948b}.primary:hover{background:var(--accent)}.nav-item:hover{color:var(--accent)}.installed-icon img{width:100%;height:100%;object-fit:contain;border-radius:10px}.installed-icon{padding:3px}.detail-tabs button.selected,.content-filters button.selected{color:var(--accent);background:#3d2425;border-color:#a46460}.profile-button.selected{background:#332021;border-color:var(--accent)}
 
 button:hover:not(:disabled),.button-link:hover{border-color:var(--accent);color:var(--accent);background:#332021}.primary:hover:not(:disabled){background:var(--accent);color:#241210}.installed-icon{color:var(--accent)}
+
+/* Fullscreen changes presentation only; keep the active stream connected. */
+.player{position:relative;overflow:hidden}
+.player>iframe{display:block;width:100%;height:100%;border:0}
+.player:fullscreen{position:fixed!important;inset:0!important;margin:0!important;padding:0!important;aspect-ratio:auto!important;width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;max-width:none!important;max-height:none!important;border-radius:0!important;background:#000;overflow:hidden;display:block!important}
+.player:fullscreen>iframe{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;display:block!important}

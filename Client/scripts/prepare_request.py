@@ -35,7 +35,7 @@ client_id = config.get("clientId", "")
 if auth == "microsoft" and client_id and not re.fullmatch(r"[0-9a-fA-F-]{36}", client_id):
     raise ValueError("Microsoft login needs a registered public-client application ID")
 from gameplay_performance import render_resolution
-boost=config.get('performance') is not False
+boost=False
 render_width,render_height=render_resolution(config.get('width',1280),config.get('height',720),boost)
 settings = {
     "GLIDE_MINECRAFT_VERSION": version["id"], "GLIDE_MINECRAFT_LOADER": loader,
@@ -47,8 +47,8 @@ settings = {
     "GLIDE_RENDER_HEIGHT": str(render_height),
     "GLIDE_MAX_RESTARTS": "0",
     "GLIDE_LOADER_VERSION": loader_version,
-    "GLIDE_GAMEPLAY_PERFORMANCE": "0" if config.get('performance') is False else "1",
-    "GLIDE_STREAM_FPS": "60" if config.get('performance') is False else "30",
+    "GLIDE_GAMEPLAY_PERFORMANCE": "0",
+    "GLIDE_STREAM_FPS": "60",
 }
 with open(os.environ["GITHUB_ENV"], "a") as env:
     for key, value in settings.items():
