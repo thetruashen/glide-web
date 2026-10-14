@@ -6,6 +6,14 @@ on:
         type: choice
         options: [vanilla, neoforge]
         default: vanilla
+      suite:
+        type: choice
+        options: [full, confirm]
+        default: full
+      candidate:
+        type: choice
+        options: [threads-2, threads-3, threads-4-vector128, threads-3-vector128]
+        default: threads-3
 permissions:
   contents: read
 concurrency:
@@ -29,6 +37,8 @@ jobs:
       GLIDE_RENDER_HEIGHT: '540'
       GLIDE_MAX_RESTARTS: '0'
       GLIDE_GAMEPLAY_PERFORMANCE: '1'
+      BENCH_SUITE: ${{ inputs.suite }}
+      BENCH_CANDIDATE: ${{ inputs.candidate }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,7 +65,7 @@ jobs:
           GLIDE_INSTALL_ONLY=1 python Client/scripts/glide_launch.py &
           GAME_PREP=$!
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends xvfb ffmpeg libgl1-mesa-dri libglx-mesa0 libgl1 mesa-utils mangohud libx11-6 libxrandr2 libxcursor1 libxi6 libxinerama1 libasound2t64
+          sudo apt-get install -y --no-install-recommends xvfb x11-utils ffmpeg libgl1-mesa-dri libglx-mesa0 libgl1 mesa-utils mangohud libx11-6 libxrandr2 libxcursor1 libxi6 libxinerama1 libasound2t64
           wait "$GAME_PREP"
       - name: Start measured desktop
         run: |
