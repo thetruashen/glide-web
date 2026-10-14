@@ -9,9 +9,9 @@ function player(promise=true){
  class Element{constructor(public stream=false){}closest(){return this.stream?this:null;}}
  const surface=new Element(true) as Element&{requestPointerLock:()=>Promise<void>|void;focus:()=>void};
  surface.requestPointerLock=()=>{locks++;return promise?Promise.resolve():undefined;};surface.focus=()=>{focus++;};
- const document={pointerLockElement:null as unknown,addEventListener:(name:string,handler:Function)=>events.set(name,handler)};
+ const document={documentElement:{style:{setProperty:()=>{}}},pointerLockElement:null as unknown,addEventListener:(name:string,handler:Function)=>events.set(name,handler)};
  const input={inputAttached:true,element:surface};
- runInNewContext(code,{document,window:{webrtcInput:input},Element});
+ runInNewContext(code,{document,window:{webrtcInput:input},Element,URLSearchParams,location:{search:'?manual_width=1280&manual_height=720'}});
  return{click:(target=surface,button=0)=>events.get('pointerdown')!({target,button}),surface,input,document,Element,get locks(){return locks;},get focus(){return focus;}};
 }
 test('clicking the stream captures the existing input surface immediately',()=>{

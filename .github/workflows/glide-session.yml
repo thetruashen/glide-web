@@ -159,7 +159,7 @@ jobs:
               proxy_set_header Accept-Encoding "";
               sub_filter_types text/html;
               sub_filter_once on;
-              sub_filter '</body>' '<script defer src="/glide-api/player.js"></script></body>';
+              sub_filter '</body>' '<link rel="stylesheet" href="/glide-api/player.css"><script defer src="/glide-api/player.js"></script></body>';
               proxy_set_header Host \$host;
               proxy_set_header X-Forwarded-Proto https;
               proxy_set_header Authorization "Basic $BASIC";

@@ -130,12 +130,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             return
-        if (route.path not in {'/glide-api/check','/glide-api/player.js'} and not self.headers.get('Authorization', '').startswith('Bearer ')) or not self.authorized():
+        if (route.path not in {'/glide-api/check','/glide-api/player.js','/glide-api/player.css'} and not self.headers.get('Authorization', '').startswith('Bearer ')) or not self.authorized():
             self.reply(401, {"error": "Unauthorized"})
             return
-        if route.path == '/glide-api/player.js':
-            data=(Path(__file__).resolve().parents[1]/'assets'/'player.js').read_bytes()
-            self.headers_out(200,'text/javascript; charset=utf-8',len(data))
+        if route.path in {'/glide-api/player.js','/glide-api/player.css'}:
+            filename=route.path.rsplit('/',1)[1]
+            data=(Path(__file__).resolve().parents[1]/'assets'/filename).read_bytes()
+            self.headers_out(200,('text/javascript' if filename.endswith('.js') else 'text/css')+'; charset=utf-8',len(data))
             self.wfile.write(data)
         elif route.path == "/glide-api/check":
             self.headers_out(204, size=0)

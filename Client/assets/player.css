@@ -1,0 +1,11 @@
+/* Viewport sizing also handles fullscreen without a window resize event.
+   Keep the decoder/canvas backing dimensions unchanged during presentation. */
+html,body,#app{width:100%!important;height:100dvh!important;margin:0!important;overflow:hidden!important}
+.video-container{width:100%!important;height:100%!important;min-height:0!important;min-width:0!important}
+.video-container #videoCanvas,.video-container #videoStream,.video-container #videoWorkerCanvas,.video-container #overlayInput{
+ position:absolute!important;left:50%!important;top:50%!important;
+ width:min(100vw,var(--pigmc-fit-width,177.777778dvh))!important;
+ height:min(100dvh,var(--pigmc-fit-height,56.25vw))!important;
+ max-width:none!important;max-height:none!important;
+ transform:translate(-50%,-50%)!important;object-fit:fill!important;
+}
