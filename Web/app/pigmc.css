@@ -12,3 +12,5 @@ button:hover:not(:disabled),.button-link:hover{border-color:var(--accent);color:
 .player>iframe{display:block;width:100%;height:100%;border:0}
 .player:fullscreen{position:fixed!important;inset:0!important;margin:0!important;padding:0!important;aspect-ratio:auto!important;width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;max-width:none!important;max-height:none!important;border-radius:0!important;background:#000;overflow:hidden;display:block!important}
 .player:fullscreen>iframe{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;display:block!important}
+
+.player>iframe:fullscreen{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-width:none!important;max-height:none!important;margin:0!important;padding:0!important;border:0!important;background:#000}

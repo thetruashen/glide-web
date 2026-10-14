@@ -242,7 +242,8 @@ export default function Home() {
   }
   async function fullscreen() {
     try {
-      await screen.current?.requestFullscreen({ navigationUI: 'hide' });
+      const target=screen.current?.querySelector('iframe') || screen.current;
+      await target?.requestFullscreen({ navigationUI: 'hide' });
       const keyboard = (navigator as Navigator & { keyboard?: { lock(keys: string[]): Promise<void> } }).keyboard;
       if (keyboard?.lock) {
         try { await keyboard.lock(['Escape']); } catch { /* Fullscreen remains usable when keyboard permission is declined. */ }
