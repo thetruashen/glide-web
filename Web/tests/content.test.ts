@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
 import { cfPackSettings, compatible, fileFetcher, installPack, packSettings, requiredReleases, safePath, verified } from '../lib/install-content';
+import {archiveEntries,rewriteArchive} from '../lib/instance-archive';
 import { clearCatalogCache, downloadable, type Release } from '../lib/catalog-api';
 
 const profile = { version: '1.21.1', loader: 'neoforge' };
@@ -107,4 +108,15 @@ test('large legitimate pack archives can exceed the former 10,000-file cap',asyn
  for(let i=0;i<10001;i++)zip.file(`overrides/config/data/${i}.txt`,'');
  const archive=new Blob([new Uint8Array(await zip.generateAsync({type:'uint8array'}))]);
  const result=await installPack(archive,'curseforge',async()=>{throw new Error('No downloads expected');},()=>{},signal());assert.equal(result.settings.loaderVersion,'43.5.0');const restored=await JSZip.loadAsync(await result.backup.arrayBuffer());assert.ok(restored.file('config/data/10000.txt'));
+});
+
+for (const provider of ['curseforge','modrinth'] as const) test(`${provider} keeps bundled fonts and pack resources through install and export`,async()=>{
+ const contents={'fontfiles/Odin Rounded - Bold Italic.otf':'font','resources/custom/textures/title.png':'texture','local/ftbquests/quests/data.snbt':'quest','optionsshaders.txt':'shaderPack=OFF'};
+ const manifest:Record<string,string>=provider==='curseforge'?{'manifest.json':JSON.stringify({manifestType:'minecraftModpack',manifestVersion:1,minecraft:{version:'1.20.1',modLoaders:[{id:'forge-47.4.4',primary:true}]},files:[]})}:{'modrinth.index.json':JSON.stringify({formatVersion:1,game:'minecraft',dependencies:{minecraft:'1.20.1',forge:'47.4.4'},files:[]})};
+ const archive=await zipBlob({...manifest,...Object.fromEntries(Object.entries(contents).map(([path,data])=>['overrides/'+path,data]))});
+ const result=await installPack(archive,provider,async()=>{throw new Error('No downloads expected');},()=>{},signal());
+ const exported=await rewriteArchive(result.backup,undefined,undefined);
+ const entries=await archiveEntries(exported);assert.ok(entries.some(entry=>entry.filename==='fontfiles/Odin Rounded - Bold Italic.otf'));
+ const saved=await JSZip.loadAsync(await exported.arrayBuffer());
+ for(const [path,data] of Object.entries(contents))assert.equal(await saved.file(path)!.async('string'),data);
 });

@@ -15,8 +15,9 @@ from urllib.parse import parse_qs, urlsplit
 
 ROOT = Path(os.environ.get("GLIDE_MINECRAFT_DIR", "/home/runner/glide-minecraft"))
 RUNTIME = Path(os.environ.get("GLIDE_SESSION_DIR", "/tmp/glide-session"))
-ALLOWED = {"saves", "mods", "config", "resourcepacks", "shaderpacks", "datapacks", "kubejs", "scripts", "defaultconfigs", "patchouli_books", "fancymenu", "openloader", "paxi", "global_packs", "packmenu", "journeymap"}
-FILES = {"options.txt", "optionsof.txt", "servers.dat"}
+# Keep in sync with Web/lib/profile-paths.ts. These are per-instance data, never shared game caches.
+ALLOWED = {'kubejs', 'drippyloadingscreen', 'XaeroWaypoints', 'mods', 'jei', 'resourcepacks', 'fonts', 'ftbteams', 'saves', 'schematics', 'XaeroWorldMap', 'scripts', 'voxelmap', 'local', 'packmenu', 'patchouli_books', 'emotes', 'openloader', 'essential', 'custommainmenu', 'fancymenu_data', 'fancymenu', 'emi', 'defaultconfigs', 'ftbquests', 'figura', 'shaderpacks', 'paxi', 'global_packs', 'fontfiles', 'xaero', 'rei', 'config', 'resources', 'craftpresence', 'customnpcs', 'loadingscreens', 'tlm', 'journeymap', 'structures', 'customloadingscreen', 'datapacks'}
+FILES = {'optionsof.txt', 'options.txt', 'icon.png', 'pack.png', 'optionsshaders.txt', 'servers.dat', 'optionsvivecraft.txt'}
 MAX_BYTES = 4096 * 1024 * 1024
 LOCK = threading.RLock()
 DOWNLOAD_HOSTS = {'cdn.modrinth.com','edge.forgecdn.net','mediafilez.forgecdn.net','media.forgecdn.net','github.com','raw.githubusercontent.com','gitlab.com','release-assets.githubusercontent.com','objects.githubusercontent.com'}
@@ -51,7 +52,7 @@ def extract_archive(data, root):
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         members = archive.infolist()
         if len(members) > 100000 or sum(m.file_size for m in members) > MAX_BYTES * 2:
-            raise ValueError("Expanded profile exceeds 1 GiB or 100,000 files")
+            raise ValueError("Expanded profile exceeds 8 GiB or 100,000 files")
         for member in members:
             path = PurePosixPath(member.filename)
             if (not path.parts or path.is_absolute() or ".." in path.parts
