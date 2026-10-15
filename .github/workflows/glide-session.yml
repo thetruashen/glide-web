@@ -222,11 +222,12 @@ jobs:
           import shutil, sys
           from pathlib import Path
           sys.path.insert(0, 'Client/scripts')
-          from session_api import ALLOWED, FILES
+          from session_api import content_root
           root = Path('/home/runner/glide-minecraft')
-          for name in sorted(ALLOWED | FILES):
-              path = root / name
-              if path.is_dir(): shutil.rmtree(path)
+          for path in root.iterdir():
+              if not content_root(path.name): continue
+              if path.is_symlink(): path.unlink()
+              elif path.is_dir(): shutil.rmtree(path)
               elif path.exists(): path.unlink()
           shutil.rmtree('/tmp/glide-session', ignore_errors=True)
           Path('/tmp/glide-launch.log').unlink(missing_ok=True)

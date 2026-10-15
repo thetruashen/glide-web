@@ -35,24 +35,27 @@ class ProfileTests(unittest.TestCase):
             self.assertEqual((root / 'mods/test.jar').read_bytes(), b'mod')
 
     def test_pack_resources_restore_and_snapshot(self):
-        entries=[('fontfiles/Odin Rounded - Bold Italic.otf',b'font'),('resources/custom/textures/title.png',b'texture'),('local/ftbquests/quests/data.snbt',b'quest'),('optionsshaders.txt',b'shaderPack=OFF')]
+        entries=[('oresources/minecraft/textures/gui/options_background.png',b'background'),('unregistered-custom-folder/data.bin',b'custom'),('pack-settings.json',b'{}'),('fontfiles/Odin Rounded - Bold Italic.otf',b'font'),('resources/custom/textures/title.png',b'texture'),('local/ftbquests/quests/data.snbt',b'quest'),('optionsshaders.txt',b'shaderPack=OFF')]
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)/'game';root.mkdir()
             runtime=Path(directory)/'runtime';runtime.mkdir()
             extract_archive(archive(entries),root)
+            (root/'versions').mkdir();(root/'versions'/'private.json').write_bytes(b'cache')
+            (root/'accounts.json').write_bytes(b'credentials')
             with patch.object(session_api,'ROOT',root),patch.object(session_api,'RUNTIME',runtime):
                 saved=zipfile.ZipFile(io.BytesIO(session_api.snapshot()))
             for name,data in entries:self.assertEqual(saved.read(name),data)
+            self.assertNotIn('versions/private.json',saved.namelist())
+            self.assertNotIn('accounts.json',saved.namelist())
 
     def test_browser_and_runner_content_rules_match(self):
         import ast,re
         source=(Path(__file__).resolve().parents[2]/'Web/lib/profile-paths.ts').read_text()
         sets=re.findall(r'new Set\((\[[^\n]+?\])\)',source)
-        self.assertEqual(set(ast.literal_eval(sets[0])),session_api.ALLOWED)
-        self.assertEqual(set(ast.literal_eval(sets[1])),session_api.FILES)
+        self.assertEqual(set(ast.literal_eval(sets[0])),session_api.RESERVED_ROOTS)
 
     def test_rejects_traversal_and_system_files_before_any_write(self):
-        for path in ['../escape', '/etc/passwd', 'mods/../../escape', 'mods\\escape', 'versions/poison.json', 'C:/escape']:
+        for path in ['../escape', '/etc/passwd', 'mods/../../escape', 'mods\\escape', 'versions/poison.json', 'C:/escape', 'ASSETS/poison.json', 'accounts.json', '.ssh/id_rsa', 'launcher_accounts.json/data', 'oresources/../../escape', 'oresources//bad.png']:
             with self.subTest(path=path), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 with self.assertRaises(ValueError):

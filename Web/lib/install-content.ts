@@ -3,7 +3,7 @@ import {MAX_FILE_BYTES,MAX_PROFILE_BYTES,MAX_EXPANDED_BYTES,MAX_ARCHIVE_FILES} f
 import {readDownload,type ReportProgress} from './progress';
 import { downloadable, primeCurseFiles, hostedCatalog, getProject, getRelease, releases, type CatalogFile, type ContentType, type Project, type Release } from './catalog-api';
 import type { Mod, Profile } from './storage';
-import { safePath, SINGLE_FILES } from './profile-paths';
+import { safePath } from './profile-paths';
 export { safePath } from './profile-paths';
 
 const MAX_FILES = MAX_ARCHIVE_FILES, MAX_DOWNLOAD = MAX_FILE_BYTES, MAX_EXPANDED = MAX_EXPANDED_BYTES;
@@ -214,11 +214,6 @@ export async function installPack(archive: Blob, provider: 'modrinth' | 'cursefo
     signal.throwIfAborted();
     report?.({title:'Applying pack configuration',detail:entry.name,fileIndex:index+1,fileCount:overrideEntries.length,percent:index/overrideEntries.length*100});
     const path = entry.name.slice(folder.length);
-    if (/^(README|LICENSE|CHANGELOG)(\.[\w]+)?$/i.test(path)) continue;
-    // Pack authors include read-me/server instructions alongside overrides.
-    // They are documentation, not Minecraft settings; never install them into
-    // shared game caches. Full archive traversal validation already ran above.
-    if(!path.includes('/') && !SINGLE_FILES.has(path) && /\.(txt|md|pdf)$/i.test(path))continue;
     // JSZip tracks the original name even when it normalizes a malicious path.
     const original = (entry as typeof entry & { unsafeOriginalName?: string }).unsafeOriginalName || entry.name;
     if (original.split('/').includes('..') || original.includes('\\')) throw new Error('Unsafe modpack override path.');

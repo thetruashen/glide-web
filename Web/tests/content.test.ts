@@ -12,8 +12,8 @@ async function zipBlob(files: Record<string,string>) {
   return new Blob([new Uint8Array(await zip.generateAsync({type:'uint8array'}))]);
 }
 test('pack paths preserve configs/scripts but reject game cache poisoning and traversal', () => {
-  for (const path of ['mods/test.jar','kubejs/client_scripts/menu.js','defaultconfigs/server.toml','options.txt']) assert.equal(safePath(path),path);
-  for (const path of ['mods','../secret','mods/../../versions/a.json','/etc/passwd','config\\evil','C:/tmp','versions/poison.json','.glide-install/poison.json','mods//test.jar']) assert.throws(() => safePath(path));
+  for (const path of ['mods/test.jar','kubejs/client_scripts/menu.js','defaultconfigs/server.toml','options.txt','oresources/minecraft/textures/gui/options_background.png','brand-new-pack-folder/data.bin','pack-settings.json']) assert.equal(safePath(path),path);
+  for (const path of ['../secret','mods/../../versions/a.json','/etc/passwd','config\\evil','C:/tmp','versions/poison.json','.glide-install/poison.json','mods//test.jar','ASSETS/poison.json','accounts.json','.ssh/id_rsa','launcher_accounts.json/data']) assert.throws(() => safePath(path));
 });
 test('both manifests preserve the exact loader, not just the loader family', () => {
   assert.deepEqual(packSettings({ minecraft:'1.21.1', neoforge:'21.1.258' }), {version:'1.21.1',loader:'neoforge',loaderVersion:'21.1.258'});
@@ -96,11 +96,11 @@ test('restricted CF URLs are never invented; only an author-published identical 
   }finally {globalThis.fetch=original;if(storageDescriptor)Object.defineProperty(globalThis,'sessionStorage',storageDescriptor);else Reflect.deleteProperty(globalThis,'sessionStorage');clearCatalogCache();}
 });
 
-test('pack documentation at override root is skipped while actual options are preserved',async()=>{
+test('pack documentation and root settings are preserved',async()=>{
  const manifest={manifestType:'minecraftModpack',manifestVersion:1,name:'Docs pack',minecraft:{version:'1.21.1',modLoaders:[{id:'neoforge-21.1.258',primary:true}]},files:[],overrides:'overrides'};
  const archive=await zipBlob({'manifest.json':JSON.stringify(manifest),'overrides/FOR SERVERS ONLY - SET THESE IN SERVER.PROPERTIES.txt':'Instructions','overrides/options.txt':'music:0'});
  const result=await installPack(archive,'curseforge',async()=>{throw new Error('No downloads expected');},()=>{},signal());
- const files=await JSZip.loadAsync(await result.backup.arrayBuffer());assert.equal(await files.file('options.txt')!.async('string'),'music:0');assert.equal(files.file('FOR SERVERS ONLY - SET THESE IN SERVER.PROPERTIES.txt'),null);
+ const files=await JSZip.loadAsync(await result.backup.arrayBuffer());assert.equal(await files.file('options.txt')!.async('string'),'music:0');assert.equal(await files.file('FOR SERVERS ONLY - SET THESE IN SERVER.PROPERTIES.txt')!.async('string'),'Instructions');
 });
 
 test('large legitimate pack archives can exceed the former 10,000-file cap',async()=>{
@@ -111,7 +111,7 @@ test('large legitimate pack archives can exceed the former 10,000-file cap',asyn
 });
 
 for (const provider of ['curseforge','modrinth'] as const) test(`${provider} keeps bundled fonts and pack resources through install and export`,async()=>{
- const contents={'fontfiles/Odin Rounded - Bold Italic.otf':'font','resources/custom/textures/title.png':'texture','local/ftbquests/quests/data.snbt':'quest','optionsshaders.txt':'shaderPack=OFF'};
+ const contents={'oresources/minecraft/textures/gui/options_background.png':'background','unregistered-custom-folder/data.bin':'custom','pack-settings.json':'{}','README.txt':'pack documentation','fontfiles/Odin Rounded - Bold Italic.otf':'font','resources/custom/textures/title.png':'texture','local/ftbquests/quests/data.snbt':'quest','optionsshaders.txt':'shaderPack=OFF'};
  const manifest:Record<string,string>=provider==='curseforge'?{'manifest.json':JSON.stringify({manifestType:'minecraftModpack',manifestVersion:1,minecraft:{version:'1.20.1',modLoaders:[{id:'forge-47.4.4',primary:true}]},files:[]})}:{'modrinth.index.json':JSON.stringify({formatVersion:1,game:'minecraft',dependencies:{minecraft:'1.20.1',forge:'47.4.4'},files:[]})};
  const archive=await zipBlob({...manifest,...Object.fromEntries(Object.entries(contents).map(([path,data])=>['overrides/'+path,data]))});
  const result=await installPack(archive,provider,async()=>{throw new Error('No downloads expected');},()=>{},signal());

@@ -15,9 +15,22 @@ from urllib.parse import parse_qs, urlsplit
 
 ROOT = Path(os.environ.get("GLIDE_MINECRAFT_DIR", "/home/runner/glide-minecraft"))
 RUNTIME = Path(os.environ.get("GLIDE_SESSION_DIR", "/tmp/glide-session"))
-# Keep in sync with Web/lib/profile-paths.ts. These are per-instance data, never shared game caches.
-ALLOWED = {'kubejs', 'drippyloadingscreen', 'XaeroWaypoints', 'mods', 'jei', 'resourcepacks', 'fonts', 'ftbteams', 'saves', 'schematics', 'XaeroWorldMap', 'scripts', 'voxelmap', 'local', 'packmenu', 'patchouli_books', 'emotes', 'openloader', 'essential', 'custommainmenu', 'fancymenu_data', 'fancymenu', 'emi', 'defaultconfigs', 'ftbquests', 'figura', 'shaderpacks', 'paxi', 'global_packs', 'fontfiles', 'xaero', 'rei', 'config', 'resources', 'craftpresence', 'customnpcs', 'loadingscreens', 'tlm', 'journeymap', 'structures', 'customloadingscreen', 'datapacks'}
-FILES = {'optionsof.txt', 'options.txt', 'icon.png', 'pack.png', 'optionsshaders.txt', 'servers.dat', 'optionsvivecraft.txt'}
+# Keep the reserved roots in sync with Web/lib/profile-paths.ts.
+RESERVED_ROOTS = {'authentication.json', 'launcher_profiles.json', 'runtime', 'libraries', 'glide-profile.json', 'accounts.json', 'assets', 'usernamecache.json', 'java', 'webcache', 'launcher_accounts.json', 'launcher_profiles_microsoft_store.json', 'runtimes', 'logs', 'crash-reports', 'credentials.json', 'versions', 'jre', 'jdk', 'natives', 'usercache.json', 'access_tokens.json'}
+
+
+def content_root(name):
+    return bool(name) and not name.startswith('.') and name.lower() not in RESERVED_ROOTS
+
+
+def safe_profile_path(name):
+    parts = name.split('/')
+    if (not name or re.search(r'[\\:\x00-\x1f\x7f]', name)
+            or any(part in ('', '.', '..') for part in parts) or not content_root(parts[0])):
+        raise ValueError('Invalid profile path')
+    return PurePosixPath(name)
+
+
 MAX_BYTES = 4096 * 1024 * 1024
 LOCK = threading.RLock()
 DOWNLOAD_HOSTS = {'cdn.modrinth.com','edge.forgecdn.net','mediafilez.forgecdn.net','media.forgecdn.net','github.com','raw.githubusercontent.com','gitlab.com','release-assets.githubusercontent.com','objects.githubusercontent.com'}
@@ -54,11 +67,9 @@ def extract_archive(data, root):
         if len(members) > 100000 or sum(m.file_size for m in members) > MAX_BYTES * 2:
             raise ValueError("Expanded profile exceeds 8 GiB or 100,000 files")
         for member in members:
-            path = PurePosixPath(member.filename)
-            if (not path.parts or path.is_absolute() or ".." in path.parts
-                    or "\\" in member.orig_filename or ":" in member.orig_filename
-                    or ((member.external_attr >> 16) & 0o170000) == 0o120000
-                    or not (path.parts[0] in ALLOWED or str(path) in FILES)):
+            name = member.orig_filename[:-1] if member.is_dir() else member.orig_filename
+            path = safe_profile_path(name)
+            if ((member.external_attr >> 16) & 0o170000) == 0o120000:
                 raise ValueError("Invalid profile path")
             target = root.joinpath(*path.parts)
             if not target.resolve().is_relative_to(root.resolve()):
@@ -71,12 +82,15 @@ def snapshot():
     from gameplay_performance import owned_mods
     managed=owned_mods(RUNTIME,ROOT)
     with LOCK, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=1) as archive:
-        for name in sorted(ALLOWED | FILES):
-            path = ROOT / name
+        for path in sorted(ROOT.iterdir()):
+            if not content_root(path.name) or path.is_symlink(): continue
             paths = path.rglob("*") if path.is_dir() else [path]
             for child in paths:
                 if child.is_file() and not child.is_symlink():
-                    if child.relative_to(ROOT).as_posix() in managed:continue
+                    relative = child.relative_to(ROOT).as_posix()
+                    safe_profile_path(relative)
+                    if not child.resolve().is_relative_to(ROOT.resolve()): continue
+                    if relative in managed:continue
                     archive.write(child, child.relative_to(ROOT))
     if out.tell() > MAX_BYTES:
         raise ValueError("Profile snapshot exceeds 4 GiB")
