@@ -5,6 +5,7 @@ import { download, getBackup, getMods, importProfile, newProfile, packProfile, p
 import ProgressPanel from '../components/ProgressPanel';
 import type {ProgressInfo} from '../lib/progress';
 import InstanceContent from '../components/InstanceContent';
+import InstanceLibrary from '../components/InstanceLibrary';
 import EaglerBrowser from '../components/EaglerBrowser';
 import AnimatedBanner from '../components/AnimatedBanner';
 import ContentBrowser from '../components/ContentBrowser';
@@ -26,6 +27,7 @@ export default function Home() {
   const [globalSearch, setGlobalSearch] = useState('');
   const [catalogQuery, setCatalogQuery] = useState('');
   const [items, setItems] = useState<Profile[]>([]);
+  const [libraryReady,setLibraryReady]=useState(false);
   const [profile, setProfile] = useState<Profile>();
   const [mods, setMods] = useState<Mod[]>([]);
   const [versions, setVersions] = useState<Version[]>([]);
@@ -67,7 +69,9 @@ export default function Home() {
         let saved = await profiles();
         for(const p of saved){let changed=false;if(p.name==='My world'){p.name='My instance';changed=true;}if(p.performance!==false){p.performance=false;changed=true;}if(changed)await saveProfile(p);}
         if (!saved.length) { const first = newProfile(); await saveProfile(first); saved = [first]; }
-        setItems(saved); setProfile(saved[0]); setMods(await getMods(saved[0].id));
+        let remembered='';try{remembered=localStorage.getItem('pigmc-selected-instance')||'';}catch{}
+        const selectedProfile=saved.find(p=>p.id===remembered)||saved[0];
+        setItems(saved); setProfile(selectedProfile); setMods(await getMods(selectedProfile.id));setLibraryReady(true);
         if(!host?.hosted)setToken(sessionStorage.getItem('glide-token') || '');
         const active = sessionStorage.getItem('glide-session');
         if (active) {
@@ -83,6 +87,8 @@ export default function Home() {
       } catch (e) { setError(String(e)); }
     })();
   }, []);
+
+  useEffect(()=>{if(libraryReady&&profile)try{localStorage.setItem('pigmc-selected-instance',profile.id);}catch{}},[profile?.id,libraryReady]);
 
   async function checkpoint(s: Session) {
     const response = await runner(s, 'profile');
@@ -162,11 +168,11 @@ export default function Home() {
 
   async function change(values: Partial<Profile>) {
     if (!profile || session || catalogBusy) return;
-    const next = { ...profile, ...values, ...((values.version && values.version !== profile.version) || (values.loader && values.loader !== profile.loader) ? { loaderVersion: undefined } : {}) }; setProfile(next);
+    const next = { ...profile, ...values, updated:Date.now(), ...((values.version && values.version !== profile.version) || (values.loader && values.loader !== profile.loader) ? { loaderVersion: undefined } : {}) }; setProfile(next);
     await saveProfile(next); setItems(await profiles());
   }
-  async function select(id: string) { setMode('java');setView('instances');setInstanceTab('mods');setInstanceBrowse(false); const selected = items.find(p => p.id === id); if (selected) { setProfile(selected); setMods(await getMods(id)); setLastSave(undefined); } }
-  async function addProfile() { const p = newProfile(); p.name = `My instance ${items.length + 1}`; await saveProfile(p); setItems(await profiles()); setProfile(p); setMods([]);setMode("java");setView("instances");setInstanceTab("mods");setInstanceBrowse(false); }
+  async function select(id: string, section:'mods'|'settings'|'backups'='mods') { if(session||catalogBusy)return;setMode('java');setView('instances');setInstanceTab(section);setInstanceBrowse(false); const selected = items.find(p => p.id === id); if (selected) { setProfile(selected); setMods(await getMods(id)); setLastSave(undefined);requestAnimationFrame(()=>document.getElementById('launcher-home')?.scrollIntoView({block:'start',behavior:'smooth'})); } }
+  async function addProfile() { if(!libraryReady||session||catalogBusy)return;const p = newProfile();p.updated=Date.now();let number=items.length+1;while(items.some(item=>item.name===`My instance ${number}`))number++;p.name = `My instance ${number}`; await saveProfile(p); setItems(await profiles()); setProfile(p); setMods([]);setMode("java");setView("instances");setInstanceTab("mods");setInstanceBrowse(false); }
   async function start(profileToLaunch = profile) {
     if (!profileToLaunch || busy || session || catalogBusy) return;
     setProfile(profileToLaunch); setMods(await getMods(profileToLaunch.id));
@@ -265,22 +271,22 @@ export default function Home() {
 
 
   const modeMenu=<details className="mode-menu"><summary><img src={BASE+'/pigmc.png'} alt=""/>{mode==='java'?'Java Edition':'Eaglercraft'}<ChevronDown size={16}/></summary><div><button onClick={e=>{setMode('java');setView('home');e.currentTarget.closest('details')?.removeAttribute('open');}}>Java Edition</button><button onClick={e=>{setMode('eagler');setView('home');e.currentTarget.closest('details')?.removeAttribute('open');}}>Eaglercraft</button>{!hosted&&<button onClick={()=>setShowConnection(!showConnection)}>Connection settings</button>}</div></details>;
-  return <div className="shell">
+  return <div className="shell"><a className="skip-link" href="#launcher-home">Skip to content</a>
     <aside className="sidebar">
       <a className="brand" href={BASE + '/'}><img className="brand-pig" src={BASE+"/pigmc.png"} alt=""/> pigmc<span className="beta">WEB</span></a>
       <div className="workspace-label">YOUR SPACE</div>
       <button className={`nav-item ${view === 'home' ? 'active' : ''}`} onClick={() => navigate('home')}><HomeIcon size={19}/> Home</button>
       <button className="nav-item" onClick={() => navigate('home','instances-list')}><Layers size={19}/> Library</button>
       <button className={`nav-item ${view === 'modpack' ? 'active' : ''}`} onClick={() => navigate('modpack')}><Package size={19}/> Modpacks</button>
-      <button className="nav-item" onClick={() => navigate('settings','play-settings')}><Settings size={19}/> Settings</button>
-      <div className="workspace-label worlds-heading">MY INSTANCES <button disabled={editingLocked} onClick={addProfile} title="Add instance"><Plus size={16}/></button></div>
-      {items.map(p => <button className={`profile-button ${p.id === profile?.id ? 'selected' : ''}`} disabled={editingLocked} key={p.id} onClick={() => void select(p.id)}><Box className="world-icon" size={20}/><span>{p.name}<small>{p.version} · {p.loader}</small></span></button>)}
+      <button className={`nav-item ${view==='settings'?'active':''}`} onClick={() => navigate('settings','play-settings')}><Settings size={19}/> Settings</button>
+      <div className="workspace-label worlds-heading">MY INSTANCES <button disabled={editingLocked||!libraryReady} onClick={addProfile} title="Add instance"><Plus size={16}/></button></div>
+      {items.map(p => <button className={`profile-button ${p.id === profile?.id ? 'selected' : ''}`} disabled={editingLocked} key={p.id} aria-current={view==='instances'&&p.id===profile?.id?'page':undefined} onClick={() => void select(p.id)}>{p.pack?.icon?<img className="sidebar-instance-icon" src={imageURL(p.pack.icon)} alt="" loading="lazy"/>:<Box className="world-icon" size={20}/>}<span>{p.name}<small>{p.version} · {p.loader}</small></span></button>)}
       <div className="sidebar-bottom"><span className="dot"/> Browser storage <p>{storage || 'Stored on this device'}</p><small>Export a backup before clearing browser data.</small></div>
     </aside>
     <main>
       {view!=='home' && <header><div><span className="breadcrumb">YOUR SPACE</span><span className="divider">/</span> {view==='instances'?profile?.name||'Instance':view==='settings'?'Settings':view==='account'?'Account':view==='modpack'?'Modpacks':'Discover'}</div><form className="global-search" onSubmit={e => { e.preventDefault(); setCatalogSelection(undefined); setCatalogQuery(globalSearch); if(view==='modpack'){setView('modpack');}else{setView('instances');setInstanceTab('mods');setInstanceBrowse(true);} requestAnimationFrame(() => document.getElementById('content-catalog')?.scrollIntoView({ behavior: 'smooth' })); }}><input aria-label="Search mods and packs" placeholder="Search mods and packs…" value={globalSearch} onChange={e => setGlobalSearch(e.target.value)}/></form>{modeMenu}</header>}
       <div className={`content ${view==='home'?'home-content':''}`} id="launcher-home">
-        {view === 'home' && mode==='java' && <section className="hero"><AnimatedBanner/>{modeMenu}<div className="hero-content"><h2>Ready when you are<span>.</span></h2><p>{profile?.name || 'My instance'} · {profile?.version} · {profile?.loader}</p><div className="hero-actions"><button className="primary" disabled={!profile} onClick={()=>navigate('instances')}><Box size={18}/> Open instance</button><button className="manage-button" disabled={editingLocked} onClick={()=>void addProfile()}><Plus size={18}/> New instance</button></div></div></section>}
+        {view === 'home' && mode==='java' && <section className="hero"><AnimatedBanner/>{modeMenu}<div className="hero-content"><h2>Ready when you are<span>.</span></h2><p>{profile?.name || 'My instance'} · {profile?.version} · {profile?.loader}</p><div className="hero-actions"><button className="primary" disabled={!profile} onClick={()=>navigate('instances')}><Box size={18}/> Open instance</button><button className="manage-button" disabled={editingLocked||!libraryReady} onClick={()=>void addProfile()}><Plus size={18}/> New instance</button></div></div></section>}
         <div className="page-sections">
         {mode==='eagler'&&<div className="eagler-topbar">{modeMenu}</div>}
         {error && <div role="alert" className="notice error">{error}<button onClick={() => setError('')} aria-label="Dismiss error"><X size={16}/></button></div>}
@@ -291,15 +297,15 @@ export default function Home() {
         {running && status?.stage!=='minecraft-running' && <ProgressPanel value={launchProgress}><button disabled={busy} onClick={stop}>{session?.url?'Save & stop':'Cancel launch'}</button></ProgressPanel>}
         {view !== 'home' && view !== 'instances' && view !== 'settings' && view !== 'account' && profile && <ContentBrowser key={view} profile={profile} type={view} locked={running} initialProject={catalogSelection} initialQuery={catalogQuery} downloadRepo={repo} actionsToken={token} onInstalled={contentInstalled} onWorking={setCatalogBusy}/>}
         {(view === 'home' || view === 'instances' || view === 'settings') && <>
-        {view === 'home' && <section className="panel instance-list" id="instances-list"><div className="panel-title"><h2><Box size={22}/> My instances</h2><button className="primary" disabled={editingLocked} onClick={addProfile}><Plus size={18}/> New instance</button></div>{items.map(p => <div className={`instance-row ${p.id === profile?.id ? 'selected' : ''}`} key={p.id}>{p.pack?.icon?<img src={imageURL(p.pack.icon)} alt=""/>:<Box className="instance-icon" size={54}/>}<div className="instance-row-name"><strong>{p.name}</strong><small>{p.version} · {p.loader}{p.loaderVersion ? ` ${p.loaderVersion}` : ''}</small></div><span className="instance-kind">{p.pack ? p.pack.provider : 'Local'}</span><button disabled={editingLocked} onClick={()=>void select(p.id)}><ArrowRight size={17}/> Open instance</button></div>)}</section>}
-        {view==='instances' && <><div className="instance-heading"><span className="instance-cover">{profile?.pack?.icon?<img src={imageURL(profile.pack.icon)} alt=""/>:<Box size={34}/>}</span><div><span className="eyebrow">INSTANCE</span><h1>{profile?.name}</h1><small>{profile?.version} · {profile?.loader}{profile?.loaderVersion?` ${profile.loaderVersion}`:''} · {mods.length} mods</small></div><button className="primary" disabled={busy||editingLocked||!versions.length} onClick={()=>void start()}><Play size={20}/>{running?'Session active':'Play'}</button></div><nav className="detail-tabs" aria-label="Instance sections">{(['mods','settings','backups'] as const).map(t=><button key={t} className={(instanceTab===t||(t==='mods'&&['resourcepack','shader'].includes(instanceTab)))?'selected':''} onClick={()=>{setInstanceTab(t);setInstanceBrowse(false);}}>{{mods:'Content',settings:'Settings',backups:'Backups'}[t]}</button>)}</nav></>}
+        {view==='home'&&<InstanceLibrary items={items} selected={profile?.id} running={session?.profileId} locked={editingLocked} loading={!libraryReady} onOpen={(id,section)=>void select(id,section)} onCreate={()=>void addProfile()} onDiscover={()=>navigate('modpack')}/>}
+        {view==='instances' && <><div className="instance-heading"><span className="instance-cover">{profile?.pack?.icon?<img src={imageURL(profile.pack.icon)} alt=""/>:<Box size={34}/>}</span><div><span className="eyebrow">SELECTED INSTANCE</span><h1>{profile?.name}</h1><small>{profile?.version} · {profile?.loader}{profile?.loaderVersion?` ${profile.loaderVersion}`:''} · {mods.length} mods</small></div><button className="primary" disabled={busy||editingLocked||!versions.length} onClick={()=>void start()}><Play size={20}/>{running?'Session active':'Play'}</button></div><nav className="detail-tabs" aria-label="Instance sections">{(['mods','settings','backups'] as const).map(t=><button key={t} aria-pressed={instanceTab===t||(t==='mods'&&['resourcepack','shader'].includes(instanceTab))} className={(instanceTab===t||(t==='mods'&&['resourcepack','shader'].includes(instanceTab)))?'selected':''} onClick={()=>{setInstanceTab(t);setInstanceBrowse(false);}}>{{mods:'Content',settings:'Settings',backups:'Backups'}[t]}</button>)}</nav></>}
         {(view === 'instances' || view === 'settings') && <div className={`dashboard-grid ${view==='instances' && instanceTab!=='settings'?'single-panel':''}`}>
           {(view==='settings'||instanceTab==='settings') && <section className="panel" id="instance-settings"><div className="panel-title"><h3><Box size={18}/> Your instance</h3><span>01</span></div><div className="form-grid"><label>Instance name<input disabled={editingLocked} maxLength={80} value={profile?.name || ''} onBlur={()=>{if(profile && !profile.name.trim())void change({name:'My instance'});}} onChange={e => change({name:e.target.value})}/></label></div><div className="form-grid"><label>Minecraft version<input disabled={editingLocked} className="search" placeholder="Filter versions…" value={search} onChange={e => setSearch(e.target.value)}/><select disabled={editingLocked} value={profile?.version || ''} onChange={e => { const v = versions.find(v => v.id === e.target.value); change({ version:e.target.value, loader: v?.loaders.includes(profile?.loader || '') ? profile?.loader : 'vanilla' }); }}><option value={profile?.version}>{profile?.version}</option>{filtered.filter(v => v.id !== profile?.version).map(v => <option key={v.id} value={v.id}>{v.id}{v.type !== 'release' ? ` (${v.type})` : ''}</option>)}</select></label><label>Mod loader<select disabled={editingLocked} value={profile?.loader || 'vanilla'} onChange={e => change({loader:e.target.value})}>{compatible.map(l => <option key={l} value={l}>{l === 'neoforge' ? 'NeoForge' : l.charAt(0).toUpperCase()+l.slice(1)}</option>)}</select><small>Compatible loaders for this version</small></label></div><label className="checkbox"><input type="checkbox" checked={allTypes} onChange={e => setAllTypes(e.target.checked)}/> Include snapshots, alpha & beta</label><div className="panel-footer"><span><Clock size={14}/> Cached game files</span><span>{versions.length} versions</span></div></section>}
           {(view==='settings'||instanceTab==='settings') && <section className="panel" id="play-settings"><div className="panel-title"><h3><Settings size={18}/> Play settings</h3><span>02</span></div><div className="form-grid"><label>Memory<select disabled={editingLocked} value={profile?.memory || 4} onChange={e => change({memory:Number(e.target.value)})}>{[2,3,4,6,8].map(n => <option key={n} value={n}>{n} GB{n===4?' · Recommended':''}</option>)}</select></label><label>Resolution<select disabled={editingLocked} value={`${profile?.width || 1280}x${profile?.height || 720}`} onChange={e => { const [width,height] = e.target.value.split('x').map(Number); change({width,height}); }}>{['854x480','1280x720','1600x900','1920x1080'].map(s => <option key={s}>{s}</option>)}</select></label></div><div className="panel-footer">Mouse capture and fullscreen are handled by the stream.</div></section>}
           {view==='instances' && instanceTab==='backups' && <section className="panel local-panel"><div className="panel-title"><h3><Package size={18}/> Yours. On this device.</h3><span className="local-tag">LOCAL</span></div><p>Your worlds, mods, and settings live in your browser. They travel directly to your private runner when you play.</p><div className="inline-actions"><button onClick={backup}><Download size={16}/> Export backup</button><label className="button-link"><Upload size={16}/> Import backup<input type="file" accept=".zip" disabled={editingLocked} onChange={async e => { const file=e.target.files?.[0]; if (file && profile) { try { const imported=await importProfile(profile.id,file); setProfile(imported);setItems(await profiles()); setMods(await getMods(profile.id)); setMessage('Profile imported into this browser.'); } catch(err) {setError(String(err));} } e.target.value=''; }}/></label></div><small>Keep this tab open for automatic backups. Browser storage can be cleared or evicted; exported ZIPs are your portable backup.</small><button className="delete" disabled={running || items.length < 2} onClick={async () => { if (profile && confirm(`Delete instance “${profile.name}” and its browser backups?`)) { await removeProfile(profile.id); const remaining=await profiles(); setItems(remaining); setProfile(remaining[0]); setMods(await getMods(remaining[0].id)); } }}>Delete instance</button></section>}
         </div>}</>}
         {view==='instances'&&profile&&!instanceBrowse&&['mods','resourcepack','shader'].includes(instanceTab)&&<InstanceContent key={profile.id} id={profile.id} mods={mods} locked={editingLocked} revision={message} onUpload={files=>void uploadMods(files)} onRemove={async name=>{const next=mods.filter(m=>m.name!==name);await saveMods(profile.id,next);setMods(next);}} onBrowse={kind=>{setCatalogSelection(undefined);setCatalogQuery('');setInstanceTab(kind==='mod'?'mods':kind);setInstanceBrowse(true);}}/>}
-        {view==='instances'&&instanceBrowse&&<button onClick={()=>setInstanceBrowse(false)}><ArrowRight size={16}/> Back to installed content</button>}
+        {view==='instances'&&instanceBrowse&&<button onClick={()=>setInstanceBrowse(false)}><ArrowRight size={16} style={{transform:'rotate(180deg)'}}/> Back to installed content</button>}
         {view==='instances'&&profile&&(['mods','resourcepack','shader'].includes(instanceTab)&&instanceBrowse)&&<ContentBrowser key={profile.id+instanceTab} profile={profile} type={instanceTab==='mods'?'mod':instanceTab==='shader'?'shader':'resourcepack'} initialProject={catalogSelection} initialQuery={catalogQuery} locked={running} downloadRepo={repo} actionsToken={token} onInstalled={contentInstalled} onWorking={setCatalogBusy}/>}
         </>}
         <footer><span><Box size={14}/> Built for the way you play.</span><span>Remote play · {elapsed > 0 && running ? `${elapsed}s elapsed` : 'Your next adventure awaits'}</span></footer>
